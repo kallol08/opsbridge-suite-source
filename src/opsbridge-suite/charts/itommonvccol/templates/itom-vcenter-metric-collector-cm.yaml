@@ -1,0 +1,30 @@
+{{/*# Copyright 2023 Open Text.*/}}
+
+{{/*# The only warranties for products and services of Open Text and its affiliates*/}}
+{{/*# and licensors ("Open Text") are as may be set forth in the express warranty*/}}
+{{/*# statements accompanying such products and services. Nothing herein should be*/}}
+{{/*# construed as constituting an additional warranty. Open Text shall not be*/}}
+{{/*# liable for technical or editorial errors or omissions contained herein. The*/}}
+{{/*# information contained herein is subject to change without notice.*/}}
+
+{{ if .Values.global.monitoringService.enableVMwareMonitor -}}
+{{ if .Values.global.monitoringService.virtualizationCollector.enableMetricCollection -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: itom-monitoring-vcenter-metric-collector-cm
+  namespace: {{ .Release.Namespace }}
+data:
+  env.json: |
+    {
+    "CollectorURL": {{ .Values.vcentercollector.svcname  | quote}},
+    "CollectorName": {{ .Values.vcentercollector.config.collectorname  | quote}},
+    "DataType": {{ .Values.vcentercollector.config.metricdatatype  | quote}},
+    "CollectionType": {{ .Values.vcentercollector.config.metriccollectiontype  | quote}},
+    "JobType": {{ .Values.vcentercollector.config.metricjobtype  | quote}},
+    "MultiDataType": {{ .Values.vcentercollector.config.multimetricdatatype  | quote}},
+    "MultiCollectionType": {{ .Values.vcentercollector.config.multimetriccollectiontype  | quote}},
+    "MultiJobType": {{ .Values.vcentercollector.config.multimetricjobtype  | quote}}
+    }
+{{- end }}
+{{- end }}

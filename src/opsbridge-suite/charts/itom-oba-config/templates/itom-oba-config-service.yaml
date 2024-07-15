@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: itom-oba-config-svc
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: itom-oba-config
+    {{- $args := dict "NameSuffix" "oba-config-svc" "Version" .Values.itomObaConfigImages.itomObaConfig.imageTag "Component" "oba-config" "HelmRelease" .Release.Name "Chart" .Chart }}
+    {{- template "itom-oba-config.defaultLabels" $args }}
+spec:
+  type: ClusterIP
+  sessionAffinity: ClientIP
+  ports:
+    - name: service
+      port: 8443
+      targetPort: 8443
+  selector:
+    app: itom-oba-config

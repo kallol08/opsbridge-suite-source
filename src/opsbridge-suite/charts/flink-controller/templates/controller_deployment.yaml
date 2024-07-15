@@ -1,0 +1,121 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.mainDeploymentName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- template "flink-controller.defaultLabels" (dict "NameSuffix" "flink-controller" "Version" .Values.images.controller.tag "Component" "flink-controller" "HelmRelease" .Release.Name "Chart" .Chart) }}
+  annotations:
+    deployment.microfocus.com/default-replica-count: "1"
+    deployment.microfocus.com/runlevel: UP
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: flink-controller
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: flink-controller
+        itom.microfocus.com/capability: aiops-flink
+      annotations:
+        {{- if .Values.global.vaultAppRole }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-{{ .Values.global.vaultAppRole }}
+        {{- else }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-default
+        {{- end }}
+        pod.boostport.com/vault-init-container: install
+    spec:
+      serviceAccountName: {{ .Values.deployment.rbac.serviceAccount }}
+      securityContext:
+        runAsUser: {{ .Values.global.securityContext.user }}
+        runAsGroup: {{ .Values.global.securityContext.fsGroup }}
+        fsGroup: {{ .Values.global.securityContext.fsGroup }}
+        runAsNonRoot: true
+      initContainers:
+      {{- include "helm-lib.containers.vaultInit" (dict "certNames" (printf "Common_Name:%s,Additional_SAN:%s/%s.%s.svc/%s.%s.svc.cluster.local" .Values.global.externalAccessHost .Values.serviceName .Values.serviceName .Release.Namespace .Values.serviceName .Release.Namespace) "Values" .Values) | nindent 6 }}
+
+      containers:
+      - name: controller
+        image: {{ coalesce .Values.images.controller.dockerRegistry .Values.docker.registry .Values.global.docker.registry -}}
+        / {{- coalesce .Values.images.controller.orgName .Values.docker.orgName .Values.global.docker.orgName -}}
+        / {{- .Values.images.controller.image -}}
+        : {{- .Values.images.controller.tag }}
+        imagePullPolicy: {{ .Values.global.docker.imagePullPolicy }}
+        env:
+        - name: K8S_NAMESPACE
+          value: {{ .Release.Namespace }}
+        - name: STATUSES_CM_NAME
+          value: {{ .Values.statusesConfigMap }}
+        - name: SERVICE_HEAP
+          value: "163577856" {{- /* 156 MiB */}}
+        - name: JAVA_OPTS
+          value: "-XX:MaxDirectMemorySize=64m -XX:MaxMetaspaceSize=110m -XX:MinMetaspaceFreeRatio=10 -Dio.netty.threadLocalDirectBufferSize=0"
+        - name: IDM_ADDR
+          value: "https://{{ .Values.global.idm.serviceName | default "itom-idm-svc" }}:{{ .Values.global.idm.internalPort | default 18443 }}"
+        - name: IDM_ORGANIZATION
+          value: {{ .Values.global.idm.tenant }}
+        - name: IDM_TRANSPORT_USER
+          value: {{ .Values.global.idm.transportUser }}
+        - name: IDM_TRANSPORT_PWDKEY
+          value: {{ .Values.global.idm.transportUserKey }}
+        - name: IDM_INTEGRATION_USER
+          value: {{ .Values.global.idm.integrationUser }}
+        - name: IDM_INTEGRATION_PWDKEY
+          value: {{ .Values.global.idm.integrationUserKey }}
+        - name: ENABLE_UNAUTHENTICATED_METRICS
+          value: "true"
+        resources:
+          requests:
+            memory: "384Mi"
+            cpu: "0.1"
+          limits:
+            memory: "384Mi"
+            cpu: "2"
+        readinessProbe:
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          failureThreshold: 12
+          httpGet:
+            path: /flink/controller/api/base/v1/ready
+            port: 8443
+            scheme: HTTPS
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+        volumeMounts:
+        - name: vault-token
+          mountPath: /var/run/secrets/boostport.com
+        - name: tmp-storage
+          mountPath: /tmp
+        - name: conf-storage
+          mountPath: /service/conf
+          subPath: itom-analytics/flink-controller
+        - name: log-storage
+          mountPath: /service/log
+          subPath: itom-analytics/flink-controller
+        - name: data-storage
+          mountPath: /opt/flink/state
+          subPath: itom-analytics/aec-pipeline/state
+
+      {{- include "helm-lib.containers.vaultRenew" (dict "Values" .Values) | nindent 6 }}
+
+      {{- with ( coalesce .Values.nodeSelector .Values.global.nodeSelector ) }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+      - name: vault-token
+        emptyDir:
+          medium: Memory
+      - name: tmp-storage
+        emptyDir:
+          medium: Memory
+      - name: conf-storage
+        {{- include "helm-lib.pvcStorage" (dict "claim" "configVolumeClaim" "Release" .Release "Template" .Template "Values" .Values) | nindent 8 }}
+      - name: log-storage
+        {{- include "helm-lib.pvcStorage" (dict "claim" "logVolumeClaim" "Release" .Release "Template" .Template "Values" .Values) | nindent 8 }}
+      - name: data-storage
+        {{- include "helm-lib.pvcStorage" (dict "claim" "dataVolumeClaim" "Release" .Release "Template" .Template "Values" .Values ) | nindent 8 }}

@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<configuration scan="true" scanPeriod="30 seconds">
+
+    <property name="FILE_LOG_PATTERN"
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS} %5p ${PID:- } [%t] [%X{ConfigurationDetails}]--- %-40.40logger{39} %X{Context}: %m%n"/>
+
+    <appender name="STDERR" class="ch.qos.logback.core.ConsoleAppender">
+        <target>System.err</target>
+        <encoder>
+            <pattern>${FILE_LOG_PATTERN}</pattern>
+        </encoder>
+    </appender>
+
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <target>System.out</target>
+        <encoder>
+            <pattern>${FILE_LOG_PATTERN}</pattern>
+        </encoder>
+    </appender>
+
+    <appender name="LogFileAppender" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <!--See also http://logback.qos.ch/manual/appenders.html#RollingFileAppender-->
+        <Append>true</Append>
+        <File>${SCHEDULER_NFS_LOG_DIR}/scheduler.log</File>
+        <encoder>
+            <pattern>${FILE_LOG_PATTERN}</pattern>
+        </encoder>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <FileNamePattern>${SCHEDULER_NFS_LOG_DIR}/scheduler-%d{yyyy-MM-dd}.log.%i.gz</FileNamePattern>
+            <!-- each file should be at most 5MB, keep 30 days of history, but at most 100MB -->
+            <maxFileSize>5MB</maxFileSize>
+            <maxHistory>30</maxHistory>
+            <totalSizeCap>100MB</totalSizeCap>
+        </rollingPolicy>
+    </appender>
+
+    <logger name="com.microfocus" level="${SCHEDULER_LOG_LEVEL}" additivity="false">
+        {{- if and (eq .Values.scheduler.configData.scheduler.logConfigFromConfigmap true) (eq .Values.global.di.logging.useFile false) }}
+        <appender-ref ref="STDERR" />
+        <appender-ref ref="STDOUT" />
+        {{- else }}
+        <appender-ref ref="LogFileAppender"/>
+        {{- end }}
+    </logger>
+
+    <logger name="com.vertica.solutions.kafka" level="${SCHEDULER_LOG_LEVEL}" additivity="false">
+        {{- if and (eq .Values.scheduler.configData.scheduler.logConfigFromConfigmap true) (eq .Values.global.di.logging.useFile false) }}
+        <appender-ref ref="STDERR" />
+        <appender-ref ref="STDOUT" />
+        {{- else }}
+        <appender-ref ref="LogFileAppender"/>
+        {{- end }}
+    </logger>
+
+    <logger name="com.swgrp.itomdi.configuration.client" level="${SCHEDULER_LOG_LEVEL}" additivity="false">
+        {{- if and (eq .Values.scheduler.configData.scheduler.logConfigFromConfigmap true) (eq .Values.global.di.logging.useFile false) }}
+        <appender-ref ref="STDERR" />
+        <appender-ref ref="STDOUT" />
+        {{- else }}
+        <appender-ref ref="LogFileAppender"/>
+        {{- end }}
+    </logger>
+
+    <root level="WARN">
+        {{- if and (eq .Values.scheduler.configData.scheduler.logConfigFromConfigmap true) (eq .Values.global.di.logging.useFile false) }}
+        <appender-ref ref="STDERR" />
+        <appender-ref ref="STDOUT" />
+        {{- else }}
+        <appender-ref ref="LogFileAppender"/>
+        {{- end }}
+    </root>
+</configuration>

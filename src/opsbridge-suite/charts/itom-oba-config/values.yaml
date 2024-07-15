@@ -1,0 +1,50 @@
+replicaCount: 1
+
+#####################
+# Image definitions
+#####################
+itomObaConfigImages:
+  itomObaConfig:
+    image: itom-analytics-oba-metamodel-mapping
+    imageTag: 1.3.3
+  itomObaConfigUiUploader:
+    image: itom-analytics-oba-metamodel-mapping-ui-uploader
+    imageTag: 1.3.3
+
+# Would have higher precedence than global.nodeSelector
+nodeSelector: {}
+
+global:
+  rbac:
+    serviceAccountCreate: true
+    roleCreate: true
+
+  ea:
+    obaConfig:
+      bvdExploreUrl: "https://bvd-explore:4000"
+
+  idm:
+    transportUser: "transport_admin"
+    transportUserKey: "idm_transport_admin_password"
+    integrationUser: "integration_admin"
+    integrationUserKey: "idm_integration_admin_password"
+    serviceName: "itom-idm-svc"
+    internalPort: 18443
+    tenant: "Provider"
+
+  di: {}
+
+  apiClient:
+    authorizedClientCAs:
+
+deployment:
+  rbac:
+    serviceAccount: itom-oba-config-sa
+  vertica:
+    tlsMode: verify-full
+  oba:
+    protocol: https
+    host:
+    configParameterServicePort: 9090
+
+docker: {}

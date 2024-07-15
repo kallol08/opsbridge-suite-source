@@ -1,0 +1,100 @@
+# Copyright 2020-2023 Open Text
+
+# Used global values
+
+global:
+
+  # Required globals
+  # - docker.registry: docker registry and port 
+  # - docker.orgName: docker image organization
+  # - securityContext.user: User ID to run as
+  # - securityContext.fsGroup: Group ID to run as
+  # - vaultRenew.image: vault renew image name
+  # - vaultRenew.imageTag: vault renew image tag
+  # - vaultInit.image: vault init image name
+  # - vaultInit.imageTag: vault init image tag
+  # - evtsvc.version: event service capability version
+
+  # FIPS mode
+  fipsMode: false
+
+  nodeSelector: {}
+
+  rbac:
+    serviceAccountCreate: true
+    roleCreate: true
+
+  docker:
+    imagePullSecret: ""
+    imagePullPolicy: IfNotPresent
+
+  vaultAppRole: null
+  vaultRoleId: null
+
+  # persistence.enabled=true means that the PVCs are expected to be dynamically created by the composition chart.
+  # Otherwise, persistence.dataVolumeClaim is a persistent volume claim for storing data files.
+  # persistence.logVolumeClaim is a persistent volume claim for storing log files.
+  # If all of the above are undefined, then temporary ephemeral storage will be created (only if isDemo=true)
+  persistence:
+    enabled: false
+    configVolumeClaim: null
+    logVolumeClaim: null
+    dbVolumeClaim: null
+    storageClasses:
+      fast-rwx:
+
+  # If isDemo is true, this will allow use of ephemeral storage and other POC aspects.
+  isDemo: false
+
+  # Contains IDM parameters used across all the charts
+  idm:
+    serviceName: "idm-svc"
+    internalPort: 18443
+    tenant: "Provider"
+
+  evtsvc:
+    capability: "event-service"
+    namePrefix: "evtsvc"
+    version:
+
+# Default values
+
+minMemory: 2100Mi
+minCpu: 500m
+maxMemory: 2100Mi
+maxCpu: 2000m
+
+enableJvmStatisticsLogger: false
+
+deployment:
+  rbac:
+    serviceAccount:
+
+# Allows to override the global node selector
+nodeSelector: {}
+
+# Allows to override the complete image
+image:
+
+imageName: itom-omi-artemis
+imageTag: 3.7.1
+
+# If testMode is true, vault and idm usage will be disabled
+testMode: false
+
+# enables remote debugging on port 5005
+enableRemoteDebug: false
+
+persistence:
+  volumeSize: 10Gi
+  storageClass:
+
+# Artemis config map for destinations
+destinationsCM:
+
+artemis:
+  users:
+    super:
+    readonly:
+  topics:
+    readonly:

@@ -1,0 +1,27 @@
+{{ if .Capabilities.APIVersions.Has "monitoring.coreos.com/v1/ServiceMonitor" -}}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: itom-analytics-text-clustering-monitor
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- template "aec.defaultLabels" (dict "NameSuffix" "text-clustering-svc-monitor" "Version" .Values.aecImages.clusteringServer.imageTag "Component" "text-clustering" "HelmRelease" .Release.Name "Chart" .Chart) }}
+    {{- with .Values.global.prometheus.prometheusSelector }}
+      {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  jobLabel: itom-analytics-text-clustering
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: itom-analytics-text-clustering-svc
+      app.kubernetes.io/component: aec-text-clustering-server-svc
+      app.kubernetes.io/part-of: aec
+      itom.microfocus.com/capability: aec
+  namespaceSelector:
+    matchNames:
+    - {{ .Release.Namespace }}
+  endpoints:
+  - scheme: https
+    targetPort: 8080
+    path: /metrics
+{{- end }}

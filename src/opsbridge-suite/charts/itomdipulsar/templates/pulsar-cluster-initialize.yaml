@@ -1,0 +1,190 @@
+{{/* # */}}
+{{/* # Licensed to the Apache Software Foundation (ASF) under one */}}
+{{/* # or more contributor license agreements.  See the NOTICE file */}}
+{{/* # distributed with this work for additional information */}}
+{{/* # regarding copyright ownership.  The ASF licenses this file */}}
+{{/* # to you under the Apache License, Version 2.0 (the */}}
+{{/* # "License"); you may not use this file except in compliance */}}
+{{/* # with the License.  You may obtain a copy of the License at */}}
+{{/* # */}}
+{{/* #   http://www.apache.org/licenses/LICENSE-2.0 */}}
+{{/* # */}}
+{{/* # Unless required by applicable law or agreed to in writing, */}}
+{{/* # software distributed under the License is distributed on an */}}
+{{/* # "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY */}}
+{{/* # KIND, either express or implied.  See the License for the */}}
+{{/* # specific language governing permissions and limitations */}}
+{{/* # under the License. */}}
+{{/* # */}}
+
+{{ if .Values.initialize -}}
+{{- if .Values.components.broker }}
+{{- include "pulsar.setCurrentComponentFull" (set . "currentComponent" .Values.pulsar_metadata.component) -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: "{{ .currentComponentFull }}-{{ randAlphaNum 7 | lower }}"
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "pulsar.standardLabels" . | nindent 4 }}
+spec:
+  template:
+    metadata:
+      annotations:
+        pod.boostport.com/vault-init-container: install
+        {{- if .Values.global.vaultAppRole }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-{{ .Values.global.vaultAppRole }}
+        {{- else }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-default
+        {{- end }}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: {{ .Values.global.securityContext.user | int64 }}
+        runAsGroup: {{ .Values.global.securityContext.fsGroup | int64 }}
+        fsGroup: {{ .Values.global.securityContext.fsGroup | int64 }}        
+        seccompProfile:
+          type: RuntimeDefault
+      {{/* # The init containers will follow the queue from the zookeeper for the node to run on. */}}
+      {{- with ( coalesce .Values.nodeSelector .Values.global.nodeSelector ) }}
+      nodeSelector:
+        {{ toYaml . }}
+      {{- end }}  
+      serviceAccount: {{ .Values.deployment.rbac.serviceAccount | default "itomdipulsar-sa" }}
+      serviceAccountName: {{ .Values.deployment.rbac.serviceAccount | default "itomdipulsar-sa" }}   
+
+      initContainers:
+      {{- include "helm-lib.waitForVault" . | nindent 6 }}
+      {{- $pulsarfullname := (include "pulsar.fullname" .) }}
+      {{- $zkcompname := .Values.zookeeper.component -}}
+      {{- $certNames := printf "%s-%s" $pulsarfullname $zkcompname -}}
+      {{- include "helm-lib.containers.vaultInit" (dict "certNames" $certNames "Values" .Values) | nindent 6 }}
+     
+      {{- if .Values.pulsar_metadata.configurationStore }}
+      - name: wait-cs-ready
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: {{ .Values.global.securityContext.user | int64 }}
+          runAsGroup: {{ .Values.global.securityContext.fsGroup | int64 }}                
+          seccompProfile:
+            type: RuntimeDefault
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        image: {{ .Values.global.docker.registry }}/{{ .Values.global.docker.orgName }}/{{ .Values.pulsar.image }}:{{ .Values.pulsar.imageTag }}
+        imagePullPolicy: {{ .Values.global.docker.imagePullPolicy }}
+        resources:
+          {{ toYaml .Values.initContainers.wait_cs_ready.resources | nindent 10 }}
+
+        command: ["sh", "-c"]
+        args:
+          - >-
+            until nslookup {{ .Values.pulsar_metadata.configurationStore}}; do
+              sleep 3;
+            done;
+
+      {{- end }}
+      {{- include "pulsar.zookeeper.wait.init" . | nindent 6}}
+      {{/*# This initContainer will wait for bookkeeper initnewcluster to complete
+      {{/* # before initializing pulsar metadata */}}
+      - name: pulsar-bookkeeper-verify-clusterid
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: {{ .Values.global.securityContext.user | int64 }}
+          runAsGroup: {{ .Values.global.securityContext.fsGroup | int64 }}                
+          seccompProfile:
+            type: RuntimeDefault
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        image: {{ .Values.global.docker.registry }}/{{ .Values.global.docker.orgName }}/{{ .Values.pulsar.image }}:{{ .Values.pulsar.imageTag }}
+        imagePullPolicy: {{ .Values.global.docker.imagePullPolicy }}
+        resources:
+          {{ toYaml .Values.initContainers.pulsar_bookkeeper_verify_clusterid.resources | nindent 10 }}
+        command: ["sh", "-c"]
+        args:
+        - >
+          source bin/coso-init.sh;
+          bin/apply-config-from-env.py conf/bookkeeper.conf;
+          until bin/bookkeeper shell whatisinstanceid; do
+            sleep 3;
+          done;
+        envFrom:
+        - configMapRef:
+            name: "{{ template "pulsar.fullname" . }}-{{ .Values.bookkeeper.component }}"
+        volumeMounts:
+        {{- include "pulsar.coso.init.volumeMounts" . | nindent 8 }}
+        {{- include "pulsar.bastion.certs.volumeMounts" . | nindent 8 }}
+        - name: tmp
+          mountPath: /pulsar/tmp
+        - name: conf
+          mountPath: /pulsar/conf
+        - name: logs
+          mountPath: /pulsar/logs
+        - name: ssl
+          mountPath: /pulsar/ssl
+        - name: vault-token
+          mountPath: /var/run/secrets/boostport.com
+      containers:     
+      - name: "{{ .currentComponentFull }}"
+        securityContext:        
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL   
+        image: {{ .Values.global.docker.registry }}/{{ .Values.global.docker.orgName }}/{{ .Values.pulsar.image }}:{{ .Values.pulsar.imageTag }}
+        imagePullPolicy: {{ .Values.global.docker.imagePullPolicy }}
+        resources:
+          {{ toYaml .Values.bookkeeper.metadata.resources | nindent 10 }}
+        command: ["sh", "-c"]
+        args:
+          - >
+            source bin/coso-init.sh;
+            bin/pulsar initialize-cluster-metadata \
+              --cluster {{ template "pulsar.cluster" . }} \
+              --zookeeper {{ template "pulsar.zookeeper.connect" . }}{{ .Values.metadataPrefix }} \
+              {{- if .Values.pulsar_metadata.configurationStore }}
+              --configuration-store {{ .Values.pulsar_metadata.configurationStore }}{{ .Values.pulsar_metadata.configurationStoreMetadataPrefix }} \
+              {{- end }}
+              {{- if not .Values.pulsar_metadata.configurationStore }}
+              --configuration-store {{ template "pulsar.zookeeper.connect" . }}{{ .Values.metadataPrefix }} \
+              {{- end }}
+              --web-service-url http://{{ template "pulsar.fullname" . }}-{{ .Values.broker.component }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.broker.ports.http }}/ \
+              {{- if and .Values.tls.enabled .Values.tls.broker.enabled }}
+              --web-service-url-tls https://{{ template "pulsar.fullname" . }}-{{ .Values.broker.component }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.broker.ports.https }}/ \
+              --broker-service-url-tls pulsar+ssl://{{ template "pulsar.fullname" . }}-{{ .Values.broker.component }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.broker.ports.pulsarssl }}/ \
+              {{- else }}
+              --broker-service-url pulsar://{{ template "pulsar.fullname" . }}-{{ .Values.broker.component }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.broker.ports.pulsar }}/ \
+              {{- end }}
+              || true;
+        volumeMounts:
+        {{- include "pulsar.coso.init.volumeMounts" . | nindent 8 }}
+        - name: tmp
+          mountPath: /pulsar/tmp
+        - name: conf
+          mountPath: /pulsar/conf
+        - name: logs
+          mountPath: /pulsar/logs
+        - name: ssl
+          mountPath: /pulsar/ssl
+        - name: vault-token
+          mountPath: /var/run/secrets/boostport.com
+        {{- include "pulsar.bastion.certs.volumeMounts" . | nindent 8 }}
+      volumes:
+      {{- include "pulsar.coso.init.volumes" . | nindent 6 }}
+      - name: tmp
+        emptyDir: {}
+      - name: conf
+        emptyDir: {}
+      - name: ssl
+        emptyDir: {}
+      - name: logs
+        emptyDir: {}
+      - name: vault-token
+        emptyDir: {}
+      {{- include "pulsar.bastion.certs.volumes" . | nindent 6 }}
+      restartPolicy: OnFailure
+{{- end }}
+{{- end }}

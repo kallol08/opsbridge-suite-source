@@ -1,0 +1,118 @@
+{{/*# Copyright 2023 Open Text.*/}}
+{{/*#*/}}
+{{/*# The only warranties for products and services of Open Text and its affiliates and licensors (“Open Text”) are as may be set forth in the express warranty statements accompanying such products and services. Nothing herein should be construed as constituting an additional warranty. Open Text shall not be liable for technical or editorial errors or omissions contained herein. The information contained herein is subject to change without notice.*/}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: itom-opsbridge-cloud-sme
+  labels:
+    app: itom-opsbridge-cloud-sme-app
+    app.kubernetes.io/name: itom-opsbridge-cloud-sme
+    app.kubernetes.io/version: {{ .Values.imageTag }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+    tier.itom.microfocus.com/frontend: frontend
+  annotations:
+    deployment.microfocus.com/default-replica-count: "1"
+    deployment.microfocus.com/runlevel: UP
+spec:
+  replicas: {{ default "1" .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: itom-opsbridge-cloud-sme-app
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app: itom-opsbridge-cloud-sme-app
+        app.kubernetes.io/name: itom-opsbridge-cloud-sme
+        app.kubernetes.io/version: {{ .Values.imageTag }}
+        app.kubernetes.io/managed-by: {{ .Release.Service }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+        tier.itom.microfocus.com/frontend: frontend
+      annotations:
+        {{- if .Values.global.vaultAppRole }}
+        pod.boostport.com/vault-approle: "{{ .Release.Namespace }}-{{ .Values.global.vaultAppRole }}"
+        {{- else }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-default
+        {{- end }}
+        pod.boostport.com/vault-init-container: install
+    spec:
+      securityContext:
+        runAsUser: {{ .Values.global.securityContext.user }}
+        runAsGroup: {{ .Values.global.securityContext.fsGroup }}
+        fsGroup: {{ .Values.global.securityContext.fsGroup }}
+
+      serviceAccount: {{ .Values.deployment.rbac.serviceAccount | default  "itom-cloud-sme-sa" }}
+      serviceAccountName: {{ .Values.deployment.rbac.serviceAccount | default  "itom-cloud-sme-sa" }}
+
+      {{- if .Values.global.docker.imagePullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.global.docker.imagePullSecret }}
+      {{- end }}
+
+      initContainers:
+        {{- include "helm-lib.containers.vaultInit" (dict "certNames" (printf "Common_Name:%s,Additional_SAN:itom-opsbridge-cloud-sme-svc" .Values.global.externalAccessHost) "Values" .Values) | nindent 8 }}
+
+        {{- include "helm-lib.waitForVault" . | nindent 8 }}
+
+        {{- include "helm-lib.waitFor" (dict "service" "itom-idm-svc" "port" "18443" "Values" .Values) | nindent 8 }}
+
+        {{- include "helm-lib.waitFor" (dict "service" "bvd-explore" "port" "4000" "Values" .Values) | nindent 8 }}
+
+        - name: itom-opsbridge-publish
+          {{- $registry := not (empty .Values.registryOverride) | ternary .Values.registryOverride .Values.global.docker.registry }}
+          {{- $org := not (empty .Values.orgNameOverride) | ternary .Values.orgNameOverride .Values.global.docker.orgName }}
+          image: "{{ $registry }}/{{ $org }}/{{ .Values.publish.image }}:{{ .Values.imageTag }}"
+          imagePullPolicy: {{ default "IfNotPresent" .Values.imagePullPolicy }}
+
+          {{- if .Values.commandOverride }}
+          command:
+          {{- toYaml .Values.commandOverride | nindent 12 }}
+          {{- end }}
+          resources:
+            limits:
+              cpu: 2.0
+              memory: 1000Mi
+            requests:
+              cpu: 1.0
+              memory: 500Mi
+          envFrom:
+            - configMapRef:
+                name: "{{ .Release.Name }}-boost-configmap"
+          env:
+            - name: BOOST_CLIENT_IDM_ENDPOINT
+              value: "https://itom-idm-svc.{{ .Release.Namespace }}.{{ default "svc.cluster.local" .Values.global.kubernetesDomain.name }}:{{ default "18443" .Values.global.boost.client.idm.port }}{{ default "/idm-service" .Values.global.boost.client.idm.contextPath }}"
+          volumeMounts:
+            - name: vault-token
+              mountPath: /var/run/secrets/boostport.com
+            - name: config-vol
+              mountPath: /var/bvd
+              subPath: bvd/var/bvd
+            - name: log-vol
+              mountPath: /var/log/
+              subPath: {{ .Release.Namespace }}
+
+      containers:
+        {{- include "helm-lib.containers.vaultRenew" (dict "Values" .Values) | nindent 8 }}
+
+      terminationGracePeriodSeconds: {{ default "120" .Values.deployment.terminationGracePeriod }}
+      {{- if .Values.nodeSelector }}
+      {{- with .Values.nodeSelector -}}
+      nodeSelector:
+      {{- toYaml . | nindent 8 -}}
+      {{- end }}
+      {{- end }}
+      volumes:
+        - name: vault-token
+          emptyDir: { }
+        - name: config-vol
+          {{- include "helm-lib.pvcStorage" (dict "claim" "configVolumeClaim" "Release" .Release "Template" .Template "Values" .Values ) | nindent 10 }}
+        - name: log-vol
+          {{- include "helm-lib.pvcStorage" (dict "claim" "logVolumeClaim" "Release" .Release "Template" .Template "Values" .Values ) | nindent 10 }}

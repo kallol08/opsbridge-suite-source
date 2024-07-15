@@ -1,0 +1,205 @@
+{{/* # */}}
+{{/* # Licensed to the Apache Software Foundation (ASF) under one */}}
+{{/* # or more contributor license agreements.  See the NOTICE file */}}
+{{/* # distributed with this work for additional information */}}
+{{/* # regarding copyright ownership.  The ASF licenses this file */}}
+{{/* # to you under the Apache License, Version 2.0 (the */}}
+{{/* # "License"); you may not use this file except in compliance */}}
+{{/* # with the License.  You may obtain a copy of the License at */}}
+{{/* # */}}
+{{/* #   http://www.apache.org/licenses/LICENSE-2.0 */}}
+{{/* # */}}
+{{/* # Unless required by applicable law or agreed to in writing, */}}
+{{/* # software distributed under the License is distributed on an */}}
+{{/* # "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY */}}
+{{/* # KIND, either express or implied.  See the License for the */}}
+{{/* # specific language governing permissions and limitations */}}
+{{/* # under the License. */}}
+{{/* # */}}
+{{/* # Multi-AZ job only when configure-data-placement-policy is set. */}}
+{{ if eq ( .Values.itomdipulsar.configureDataPlacementPolicy ) true -}}
+{{ include "pulsar.setCurrentComponentFull" (set . "currentComponent" "multiaz-job") -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: "{{ .currentComponentFull }}-{{ randAlphaNum 7 | lower }}"
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "pulsar.standardLabels" . | nindent 4 }}
+spec:
+  template:
+    metadata:
+      annotations:
+        pod.boostport.com/vault-init-container: install
+        {{- if .Values.global.vaultAppRole }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-{{ .Values.global.vaultAppRole }}
+        {{- else }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-default
+        {{- end }}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: {{ .Values.global.securityContext.user }}
+        runAsGroup: {{ .Values.global.securityContext.fsGroup }}
+        fsGroup: {{ .Values.global.securityContext.fsGroup }}  
+        seccompProfile:
+          type: RuntimeDefault
+      serviceAccount: "{{ template "pulsar.multiazServiceAccount" . }}"
+      serviceAccountName: "{{ template "pulsar.multiazServiceAccount" . }}"
+      initContainers:
+      {{- include "helm-lib.waitForVault" . | nindent 6 }}
+      {{- $authsuperuserclient := (include "auth.superusers.client" .) }}    
+      {{- $glhost := .Values.global.externalAccessHost -}}
+      {{- $compfull := .currentComponentFull -}}
+      {{- $certNames := printf "Common_Name:%s,Additional_SAN:%s/%s/%s.%s/%s.%s.svc" $authsuperuserclient $glhost $compfull $compfull .Release.Namespace $compfull .Release.Namespace -}}
+      {{- include "helm-lib.containers.vaultInit" (dict "certNames" $certNames "Values" .Values) | nindent 6 }}
+      {{/* # This init container will wait for bookkeeper to be ready before */}}
+      {{/* # executing the job */}}
+      - name: wait-bookkeeper-ready
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: {{ .Values.global.securityContext.user | int64 }}
+          runAsGroup: {{ .Values.global.securityContext.fsGroup | int64 }}                
+          seccompProfile:
+            type: RuntimeDefault
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        image: {{ .Values.global.docker.registry }}/{{ .Values.global.docker.orgName }}/{{ .Values.pulsar.image }}:{{ .Values.pulsar.imageTag }}
+        imagePullPolicy: {{ .Values.global.docker.imagePullPolicy }}
+        resources:
+          {{ toYaml .Values.initContainers.wait_bookkeeper_ready.resources | nindent 10 }}
+        command: ["sh", "-c"]
+        args:
+          - |
+            source bin/coso-init.sh;
+            bin/apply-config-from-env.py conf/client.conf conf/bookkeeper.conf;
+            until bin/bookkeeper shell whatisinstanceid; do
+              echo "bookkeeper cluster is not initialized yet. backoff for 3 seconds ...";
+              sleep 3;
+            done;
+            echo "bookkeeper cluster is already initialized";
+            export K8S_HOST=${KUBERNETES_SERVICE_HOST}
+            export K8S_PORT=${KUBERNETES_SERVICE_PORT_HTTPS}
+            export K8S_TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+            export K8S_NS=$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)
+            export K8S_CERT_PATH=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+            bookeeperReplicaCount=0
+            echo "Extracting the bookkeeper statefulset information"
+            get_bookie_sts_details=$(curl -X GET --cacert $K8S_CERT_PATH -H "Authorization: Bearer $K8S_TOKEN" -H 'Accept: application/json' -H 'Content-Type: application/json'  https://${K8S_HOST}:${K8S_PORT}/apis/apps/v1/namespaces/$K8S_NS/statefulsets/itomdipulsar-bookkeeper)
+            get_bookie_sts_details_rc=$(echo $?)
+            if [[ "$get_bookie_sts_details_rc" -ne 0 ]]; then
+              echo "Extracting Bookkeeper statefulset information returned non-zero return code: ${get_bookie_sts_details_rc}."
+              exit 1
+            else
+              statuscode=$(echo "$get_bookie_sts_details" | jq -r '.code')
+              echo "Bookkeeper statefulset information extracted and statuscode is: $statuscode"
+              if [[ "$statuscode" -ne "null" ]]; then
+                echo "Error while extracting bookkeeper statefulset information : $get_bookie_sts_details"
+                exit 1
+              else
+                 bookeeperReplicaCount=$(echo "$get_bookie_sts_details" | jq -r '.spec.replicas')
+                 bookieServiceNumber=$(echo "$get_bookie_sts_details" | jq -r '.status.availableReplicas')
+                 if [ "$bookieServiceNumber" == "null" ]
+                 then
+                    bookieServiceNumber=0
+                 fi
+                 echo "Required bookkeeper replica count is: ${bookeeperReplicaCount}, available bookkeeper service count is: ${bookieServiceNumber}"
+              fi
+            fi
+            until [ ${bookieServiceNumber} -eq ${bookeeperReplicaCount} ]; do
+              echo "Bookkeeper cluster {{ template "pulsar.fullname" . }} isn't ready yet ... check in 10 seconds ... Required bookkeeper replica count is: ${bookeeperReplicaCount}, available bookkeeper service count is: ${bookieServiceNumber}";
+              get_bookie_sts_details=$(curl -X GET --cacert $K8S_CERT_PATH -H "Authorization: Bearer $K8S_TOKEN" -H 'Accept: application/json' -H 'Content-Type: application/json'  https://${K8S_HOST}:${K8S_PORT}/apis/apps/v1/namespaces/$K8S_NS/statefulsets/itomdipulsar-bookkeeper)
+              bookieServiceNumber=$(echo "$get_bookie_sts_details" | jq -r '.status.availableReplicas')
+              if [ "$bookieServiceNumber" == "null" ]
+              then
+                bookieServiceNumber=0
+              fi
+              sleep 10;
+            done;
+            echo "Bookkeeper cluster is ready";
+        envFrom:
+          - configMapRef:
+              name: "{{ template "pulsar.fullname" . }}-{{ .Values.bookkeeper.component }}"
+        volumeMounts:
+          - name: tmp
+            mountPath: /pulsar/tmp
+          - name: conf
+            mountPath: /pulsar/conf
+          - name: logs
+            mountPath: /pulsar/logs
+          - name: ssl
+            mountPath: /pulsar/ssl
+          - name: vault-token
+            mountPath: /var/run/secrets/boostport.com
+        {{- include "pulsar.coso.init.volumeMounts" . | nindent 10 }}
+        {{- include "pulsar.broker.certs.volumeMounts" . | nindent 10 }}
+      containers:
+      - name: "{{ template "pulsar.fullname" . }}-multiaz-cnt"
+        securityContext:        
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        image: {{ .Values.global.docker.registry }}/{{ .Values.global.docker.orgName }}/{{ .Values.pulsar.image }}:{{ .Values.pulsar.imageTag }}
+        imagePullPolicy: {{ .Values.global.docker.imagePullPolicy }}
+        resources:
+          {{ toYaml .Values.multiAz.resources | nindent 10 }}
+        command: ["sh", "-c"]
+        args:
+        - >
+          source bin/coso-init.sh;
+          bin/apply-config-from-env.py conf/client.conf;
+          bin/apply-config-from-env.py conf/bookkeeper.conf;
+          {{- include "pulsar.multiazJobExecution" . | nindent 10 }}  
+        env:
+          - name: MY_POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          - name: webServiceUrl
+            {{- if and .Values.tls.enabled .Values.tls.broker.enabled }}
+            value: "https://{{ template "pulsar.fullname" . }}-{{ .Values.broker.component }}:{{ .Values.broker.ports.https }}/"
+            {{- else }}
+            value: "http://{{ template "pulsar.fullname" . }}-{{ .Values.broker.component }}:{{ .Values.broker.ports.http }}/"
+            {{- end }}
+        envFrom:
+        - configMapRef:
+            name: "{{ template "pulsar.fullname" . }}-{{ .Values.broker.component }}"
+        volumeMounts:
+        - name: tmp
+          mountPath: /pulsar/tmp
+        - name: conf
+          mountPath: /pulsar/conf
+        - name: logs
+          mountPath: /pulsar/logs
+        - name: ssl
+          mountPath: /pulsar/ssl
+        - name: vault-token
+          mountPath: /var/run/secrets/boostport.com
+        {{- include "pulsar.coso.init.volumeMounts" . | nindent 8 }}
+        {{- include "pulsar.coso.externalcert.volumeMounts" . | nindent 8 }}
+        {{- include "pulsar.bastion.certs.volumeMounts" . | nindent 8 }}
+        {{- include "pulsar.bastion.kafka.conf.volumeMounts" . | nindent 8 }}
+        {{- include "pulsar.coso.pulsarbookierack.volumeMounts" . | nindent 8 }}
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: conf
+        emptyDir: {}
+      - name: ssl
+        emptyDir: {}
+      - name: logs
+        emptyDir: {}
+      - name: vault-token
+        emptyDir: {}
+      {{- include "pulsar.coso.init.volumes" . | nindent 6 }}
+      {{- include "pulsar.coso.externalcert.volumes" . | nindent 6 }}
+      {{- include "pulsar.bastion.certs.volumes" . | nindent 6 }}
+      {{- include "pulsar.bastion.token.volumes" . | nindent 6 }}
+      {{- include "pulsar.bastion.kafka.conf.volumes" . | nindent 6 }}
+      {{- include "pulsar.coso.pulsarbookierack.volumes" . | nindent 6 }}
+
+      restartPolicy: OnFailure
+{{- end }}

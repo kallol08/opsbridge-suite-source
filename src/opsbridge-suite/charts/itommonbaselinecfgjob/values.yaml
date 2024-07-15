@@ -1,0 +1,71 @@
+# Copyright 2023 Open Text.
+
+# The only warranties for products and services of Open Text and its affiliates
+# and licensors ("Open Text") are as may be set forth in the express warranty
+# statements accompanying such products and services. Nothing herein should be
+# construed as constituting an additional warranty. Open Text shall not be
+# liable for technical or editorial errors or omissions contained herein. The
+# information contained herein is subject to change without notice.
+
+itombaselinecfg:
+  image: itom-monitoring-baseline-cfg-preload-job
+  imageTag: 24.2-041
+  resources:
+    limits:
+      cpu: "100m"
+      memory: "100Mi"
+    requests:
+      cpu: "100m"
+      memory: "50Mi"
+    admin:
+      replicaCount: 1
+deployment:
+  rbac:
+    serviceAccount: itom-monitoring-baseline-job-sa
+global:
+  # RBAC
+  rbac:
+    serviceAccountCreate: true
+    roleCreate: true
+  nodeSelector: {}
+  toolsBase:
+    image: itom-tools-base
+    imageTag: 1.1.0-0011
+  securityContext:
+    user: "1999"
+    fsGroup: "1999"
+  persistence:
+    enabled: false
+    configVolumeClaim: 
+    logVolumeClaim: 
+  # If isDemo is true, this will allow use of ephemeral storage and other POC aspects.
+  isDemo: false
+  monitoringService:
+    embeddedStaticThresholding: false
+    enableAzureMonitor: true 
+    enableAwsMonitor: true
+    enableKubernetesMonitor: true
+    enableVMwareMonitor: true
+    enableGcpMonitor: true
+    enableBaselineBasedThresholding: true
+
+  docker:
+    # set the global.docker.registry and orgName to your internal Docker registry/org
+    registry: localhost:5000
+    orgName: hpeswitom
+    imagePullSecret: ""
+    imagePullPolicy: IfNotPresent
+
+  securityContext:
+    user: "1999"
+    fsGroup: "1999"
+
+  # Global image references for vault
+  vaultRenew:
+    image: kubernetes-vault-renew
+    imageTag: 0.11.0-0011
+  vaultInit:
+    image: kubernetes-vault-init
+    imageTag: 0.11.0-0011
+  suiteLabel: Worker
+  suiteLabelValue: label

@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: itom-monitoring-sis-adapter-config
+  labels:
+    app.kubernetes.io/name: sis-adapter-app
+    app.kubernetes.io/managed-by: {{ .Values.sisAdapter.managedby }}
+    app.kubernetes.io/version: {{ .Values.sisAdapter.imageTag }}
+    itom.microfocus.com/capability: {{ .Values.sisAdapter.capname }}
+data:
+  IDM_ADDR: "https://{{ default  "itom-idm-svc" .Values.global.idm.serviceName }}:18443"
+  LOG_LEVEL: "error"
+  MONITORING_ADMIN_BASE_URL: "https://itom-monitoring-admin-svc:8443/monitoring-admin/api"

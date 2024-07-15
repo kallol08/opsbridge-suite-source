@@ -1,0 +1,114 @@
+{{/* # */}}
+{{/* # Copyright 2023 Open Text. */}}
+{{/* # */}}
+{{/* # The only warranties for products and services of Open Text and its affiliates and  */}}
+{{/* # licensors (“Open Text”) are as may be set forth in the express warranty statements  */}}
+{{/* # accompanying such products and services. Nothing herein should be construed as */}}
+{{/* # constituting an additional warranty. Open Text shall not be liable for technical or */}}
+{{/* # editorial errors or omissions contained herein. The information contained herein is  */}}
+{{/* # subject to change without notice. */}}
+{{/* # */}}
+{{/* # Except as specifically indicated otherwise, this document contains confidential  */}}
+{{/* # information and a valid license is required for possession, use or copying. If this work  */}}
+{{/* # is provided to the U.S. Government, consistent with FAR 12.211 and 12.212, Commercial Computer  */}}
+{{/* # Software, Computer Software Documentation, and Technical Data for Commercial Items are licensed to */}}
+{{/* # the U.S. Government under vendor’s standard commercial license. */}}
+{{/* # */}}
+apiVersion: v1
+kind: ServiceAccount
+metadata: 
+  name: "{{ template "monitoring.fullname" . }}-{{ .Values.monitoring.gencerts.component }}-sa"
+  namespace: {{ .Release.Namespace }}
+imagePullSecrets:
+  - name: {{ .Values.global.docker.imagePullSecret | default "registrypullsecret" }}
+---
+{{/* # Role with required permissions for creating/updating Prometheus scrape certs */}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: "{{ template "monitoring.fullname" . }}-{{ .Values.monitoring.gencerts.component }}-role"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    verbs:
+      - create
+      - update
+      - patch
+      - delete
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+    verbs:
+      - create
+      - update
+      - patch
+      - delete
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+    verbs:
+      - list
+      - get      
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: "{{ template "monitoring.fullname" . }}-{{ .Values.monitoring.gencerts.component }}-rb"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: "{{ template "monitoring.fullname" . }}-{{ .Values.monitoring.gencerts.component }}-role"
+subjects:
+- kind: ServiceAccount
+  name: {{ template "monitoring.fullname" . }}-{{ .Values.monitoring.gencerts.component }}-sa
+  namespace: {{ .Release.Namespace }}
+---
+{{/* # Role with required permissions for vault-init, vault-renew containers */}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: "{{ template "monitoring.fullname" . }}-{{ .Values.monitoring.gencerts.component }}-vault-role"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+    verbs:
+      - list
+  - apiGroups:
+      - ""
+    resources:
+      - serviceaccounts
+    verbs:
+      - get      
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+    verbs:
+      - get
+      - list
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    verbs:
+      - get
+      - list
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: "{{ template "monitoring.fullname" . }}-{{ .Values.monitoring.gencerts.component }}-vault-rb"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: "{{ template "monitoring.fullname" . }}-{{ .Values.monitoring.gencerts.component }}-vault-role"
+subjects:
+- kind: ServiceAccount
+  name: {{ template "monitoring.fullname" . }}-{{ .Values.monitoring.gencerts.component }}-sa
+  namespace: {{ .Release.Namespace }}

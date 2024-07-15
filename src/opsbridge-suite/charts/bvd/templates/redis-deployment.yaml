@@ -1,0 +1,159 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bvd-redis
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    deployment.microfocus.com/default-replica-count: "1"
+    deployment.microfocus.com/runlevel: DB
+  labels:
+    service: bvd-redis
+    app.kubernetes.io/name: bvd-redis
+    app.kubernetes.io/managed-by: bvd-config
+    app.kubernetes.io/version: {{ .Values.bvd.imageTag }}
+    itom.microfocus.com/capability: bvd
+    tier.itom.microfocus.com/redis: redis
+spec:
+  replicas: {{ .Values.redis.replicaCount }}
+  selector:
+    matchLabels:
+      service: bvd-redis
+      itom.microfocus.com/capability: bvd
+  strategy: {}
+  template:
+    metadata:
+      labels:
+        service: bvd-redis
+        itom.microfocus.com/capability: bvd
+      annotations:
+        {{- if .Values.global.vaultAppRole }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-{{ .Values.global.vaultAppRole }}
+        {{- else }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-default
+        {{- end }}
+        pod.boostport.com/vault-init-container: install
+    spec:
+      serviceAccount: {{ .Values.deployment.rbac.serviceAccount }}
+      serviceAccountName: {{ .Values.deployment.rbac.serviceAccount }}
+      initContainers:
+      {{- include "helm-lib.waitForVault" . | nindent 6 }}
+      {{- $certName := printf "Common_Name:bvd-redis,Additional_SAN:bvd-redis.%s/bvd-redis.%s.svc.cluster.local,File_Name:bvd-redis" ( .Release.Namespace ) ( .Release.Namespace ) -}}
+      {{- include "helm-lib.containers.vaultInit" (dict "certNames" $certName "Values" .Values) | nindent 6 }}
+      containers:
+      - image: {{ .Values.global.docker.registry }}/{{ .Values.global.docker.orgName }}/{{ ( coalesce .Values.global.itomRedis.image .Values.redis.image ) }}:{{ ( coalesce .Values.global.itomRedis.imageTag .Values.redis.imageTag ) }}
+        livenessProbe:
+          exec:
+            command:
+            - /bin/probeRedis.sh
+          initialDelaySeconds: 5
+          timeoutSeconds: 5
+        name: bvd-redis
+        env:
+        - name: REDIS_CONF_KEY
+          value: "redis_conf"
+        - name: REDIS_PWD_KEY
+          value: "redis_pwd"
+        - name: CERT_COMMON_NAME
+          value: "bvd-redis"
+        - name: REDIS_APPENDONLY
+          value: "no"
+        - name: SECRET_NAME
+          value: "bvd-secret"
+        - name: REDIS_CONTAINER_MODE
+          value: "redis"
+        ports:
+        - containerPort: 6380
+          protocol: TCP
+        resources:
+          requests:
+            cpu: {{ .Values.redis.resources.requests.cpu }}
+            memory: {{ .Values.redis.resources.requests.memory }}
+          limits:
+            memory: {{ .Values.redis.resources.limits.memory }}
+            cpu: {{ .Values.redis.resources.limits.cpu }}
+        volumeMounts:
+          - name: bvd-redis-persistent-storage
+            mountPath: /data
+            subPath: redis-bvd/data
+          - name: vault-token
+            mountPath: /var/run/secrets/boostport.com
+          - name: bvd-temp-storage
+            mountPath: /tmp
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          privileged: false
+          readOnlyRootFilesystem: true
+          seccompProfile:
+            type: RuntimeDefault
+          capabilities:
+            drop:
+            - ALL
+      - image: {{ .Values.global.docker.registry }}/{{ .Values.global.docker.orgName }}/{{ ( coalesce .Values.global.itomRedis.image .Values.redis.image ) }}:{{ ( coalesce .Values.global.itomRedis.imageTag .Values.redis.imageTag ) }}
+        name: bvd-redis-exporter
+        env:
+        - name: REDIS_PWD_KEY
+          value: "redis_pwd"
+        - name: CERT_COMMON_NAME
+          value: "bvd-redis"
+        - name: SECRET_NAME
+          value: "bvd-secret"
+        - name: REDIS_CONTAINER_MODE
+          value: "exporter"
+        - name: "NODE_OPTIONS"
+          valueFrom:
+            configMapKeyRef:
+              name: bvd-config
+              key: bvd.nodeOptions
+        ports:
+        - containerPort: 9121
+          name: redis-exporter
+          protocol: TCP
+        resources:
+          requests:
+            cpu: {{ .Values.redis.resources.requests.cpu }}
+            memory: {{ .Values.redis.resources.requests.memory }}
+          limits:
+            memory: {{ .Values.redis.resources.limits.memory }}
+            cpu: {{ .Values.redis.resources.limits.cpu }}
+        volumeMounts:
+          - name: vault-token
+            mountPath: /var/run/secrets/boostport.com
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          privileged: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+      {{- include "helm-lib.containers.vaultRenew" (dict "Values" .Values) | nindent 6 }}
+      restartPolicy: Always
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: {{ .Values.global.securityContext.user | int64 }}
+        runAsGroup: {{ .Values.global.securityContext.fsGroup | int64 }}
+        fsGroup: {{ .Values.global.securityContext.fsGroup | int64 }}
+
+      {{- with ( coalesce .Values.nodeSelector .Values.global.nodeSelector ) }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+
+      volumes:
+      - name: vault-token
+        emptyDir: {}
+      - name: bvd-redis-persistent-storage
+        {{- include "helm-lib.pvcStorage" (dict "claim" "dbVolumeClaim" "Release" .Release "Template" .Template "Values" .Values ) | nindent 8 }}
+      - name: bvd-temp-storage
+        emptyDir: {}

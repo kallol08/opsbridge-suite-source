@@ -1,0 +1,248 @@
+{{ $namePrefix := include "namePrefix" . }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.namePrefix }}-vault
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ .Values.namePrefix }}-vault-app
+    deployments.microfocus.com/component: itom-vault
+  annotations:
+    deployment.microfocus.com/default-replica-count: "1"
+    deployment.microfocus.com/runlevel: DB
+    deployment.microfocus.com/simple-update: ignore
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ .Values.namePrefix }}-vault-app
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.namePrefix }}-vault-app
+        deployments.microfocus.com/component: itom-vault
+    spec:
+      serviceAccountName: {{ template "itom-vault.serviceAccountName" . }}
+      {{- with ( coalesce .Values.nodeSelector .Values.global.nodeSelector ) }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - {{ $namePrefix }}-vault-app
+              topologyKey: "kubernetes.io/hostname"
+      {{- if or .Values.deployment.tolerations .Values.global.cluster.tolerations }}
+      tolerations:
+      {{- if .Values.deployment.tolerations }}
+      {{- toYaml .Values.deployment.tolerations | nindent 8 }}
+      {{- end }}
+      {{- if .Values.global.cluster.tolerations }}
+      {{- toYaml .Values.global.cluster.tolerations | nindent 8 }}
+      {{- end }}
+      {{- end }}
+      hostname: {{ .Values.namePrefix }}-vault
+      initContainers:
+      - name: migration
+        securityContext:
+          readOnlyRootFilesystem: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        image: {{ .Values.global.docker.registry }}/{{ .Values.global.docker.orgName }}/{{ .Values.vault.image }}:{{ .Values.vault.imageTag }}
+        imagePullPolicy: {{ .Values.global.docker.imagePullPolicy }}
+        command: ['/utils/data_maintain.sh', 'migrate' ]
+        env:
+        - name: REALM_LIST
+          value: "{{ .Values.global.vault.realmList }}"
+        - name: SERVICE_PREFIX
+          value: "{{ .Values.namePrefix }}"
+        - name: MY_POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        resources:
+        {{- with .Values.resources }}
+        {{- toYaml . | nindent 10 }}
+        {{- end }}
+        volumeMounts:
+        - mountPath: /coreVolumeRoot
+          name: core-volume
+        - mountPath: /ssl
+          name: vault-certs
+        - mountPath: /tmp
+          name: tmp
+      containers:
+      - name: vault
+        securityContext:
+          readOnlyRootFilesystem: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        image: {{ .Values.global.docker.registry }}/{{ .Values.global.docker.orgName }}/{{ .Values.vault.image }}:{{ .Values.vault.imageTag }}
+        imagePullPolicy: {{ .Values.global.docker.imagePullPolicy }}
+        startupProbe:
+          exec:
+            command: ["/utils/probe.sh", "startup"]
+          failureThreshold: 60
+          periodSeconds: 5
+        livenessProbe:
+          exec:
+            command: ["/utils/probe.sh", "liveness"]
+          failureThreshold: 3
+          periodSeconds: 5
+          timeoutSeconds: 15
+        readinessProbe:
+          exec:
+            command: ["/utils/probe.sh", "readiness"]
+          failureThreshold: 3
+          periodSeconds: 5
+          timeoutSeconds: 15
+        env:
+        - name: CLUSTER_MANAGEMENT
+          value: {{ default false .Values.global.services.clusterManagement | quote }}
+        - name: DEPLOYMENT_MANAGEMENT
+          value: {{ default false .Values.global.services.deploymentManagement | quote }}
+        - name: MONITORING
+          value: {{ default false .Values.global.services.monitoring | quote }}
+        {{- if .Values.global.cluster.k8sProvider }}
+        {{- if or (hasPrefix "cdf-" .Values.global.cluster.k8sProvider) (eq .Values.global.cluster.k8sProvider "cdf") }}
+        - name: K8S_INSTALL_MODE
+          value: "CLASSIC"
+        {{- else }}
+        - name: K8S_INSTALL_MODE
+          value: "BYOK"
+        {{- end }}
+        - name: RELEASE_NAME
+          value: {{ .Release.Name }}
+        {{- else }}
+        - name: K8S_INSTALL_MODE
+          value: "{{ .Values.vault.k8sInstallMode }}"
+        {{- end }}
+        - name: SYSTEM_USER_ID
+          value: "{{ default "1999" .Values.global.securityContext.user }}"
+        - name: SYSTEM_GROUP_ID
+          value: "{{ default "1999" .Values.global.securityContext.fsGroup }}"
+        {{- if .Values.vault.backup.max }}
+        - name: MAX_BACKUP
+          value: "{{ .Values.vault.backup.max }}"
+        {{- else }}
+        - name: MAX_BACKUP
+          value: "30"
+        {{- end }}
+        {{- if .Values.vault.backup.interval }}
+        - name: TIME_INTERVAL
+          value: "{{ .Values.vault.backup.interval }}"
+        {{- else }}
+        - name: TIME_INTERVAL
+          value: "24"
+        {{- end }}
+        - name: CLUSTER_MGMT_ADDR
+          valueFrom:
+            configMapKeyRef:
+              name: cdf-cluster-host
+              key: CLUSTER_MGMT_ADDR
+              optional: true
+        - name: VAULT_TLS_CA_FILE
+          value: "/ssl/ca.crt"
+        - name: VAULT_REDIRECT_ADDR
+          value: "https://{{ .Values.namePrefix }}-vault.{{ .Release.Namespace }}:8200"
+        - name: VAULT_SERVER_IP
+          value: "{{ .Values.namePrefix }}-vault.{{ .Release.Namespace }}"
+        - name: DEPLOYMENT_TYPE
+          value: "{{ .Values.vault.deploymentType }}"
+        - name: REALM_LIST
+          value: "{{ .Values.global.vault.realmList }}"
+        - name: SERVICE_PREFIX
+          value: "{{ .Values.namePrefix }}"
+        - name: DISABLE_MLOCK
+          value: "true"
+        {{- if .Values.global.initSecrets }}
+        - name: INIT_SECRETS
+          value: "{{ .Values.global.initSecrets }}"
+        {{- end }}
+        - name: EXCLUDE_AUDIT_OPERATIONS
+          value: {{ default "list,read,help,alias-lookahead" .Values.vault.audit.excludeFilter.operations }}
+        - name: EXCLUDE_AUDIT_PATH
+          value: {{ default "auth/token/renew-self,RIC/issue/coretech,RID/issue/coretech,RE/issue/coretech" .Values.vault.audit.excludeFilter.path }}
+        {{- if eq .Values.vault.audit.enabled false }}
+        - name: ENABLE_AUDIT
+          value: "false"
+        {{- else }}
+        - name: ENABLE_AUDIT
+          value: "true"
+        {{- end }}
+        - name: AUDIT_LOG_SIZE
+          value: "{{ default "20M" .Values.vault.audit.size }}"
+        - name: AUDIT_LOG_MAXCOUNT
+          value: "{{ default "10" .Values.vault.audit.maxCount }}"
+        {{- if eq .Values.vault.audit.useLoggingVolume true }}
+        - name: VAULT_AUDIT_PATH
+          value: {{ default "/logs/vault" .Values.vault.audit.filePath }}
+        {{- else }}
+        - name: VAULT_AUDIT_PATH
+          value: {{ default "/coreVolumeRoot/vault/logs" .Values.vault.audit.filePath }}
+        {{- end }}
+        - name: VAULT_LOG_LEVEL
+          value: {{ default "err" .Values.vault.logLevel }}
+        - name: MY_POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: MY_POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: TLS_MIN_VERSION
+          value: {{ include "helm-lib.getTlsMinVersion" (dict "format" "0" "Values" .Values) }}
+        - name: TLS_CIPHERS
+          value: {{ include "helm-lib.getTlsCiphers" . }}
+        - name: IMAGE_TAG
+          value: "{{ .Values.vault.imageTag }}"
+        resources:
+        {{- with .Values.resources }}
+        {{- toYaml . | nindent 10 }}
+        {{- end }}
+        volumeMounts:
+        - mountPath: /coreVolumeRoot
+          name: core-volume
+        - mountPath: /ssl
+          name: vault-certs
+        - name: log-dir
+          mountPath: /logs/vault
+          subPath: vault
+        - name: tmp
+          mountPath: /tmp
+      securityContext:
+        runAsUser: {{ default "1999" .Values.global.securityContext.user }}
+        fsGroup: {{ default "1999" .Values.global.securityContext.fsGroup }}
+        runAsGroup: {{ default "1999" .Values.global.securityContext.fsGroup }}
+        supplementalGroups: [{{ default "1999" .Values.global.securityContext.fsGroup }}]
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      volumes:
+      - name: core-volume
+        {{- include "helm-lib.pvcStorage" (dict "claim" "dataVolumeClaim" "Release" .Release "Template" .Template "Values" .Values ) | nindent 8 }}
+      - name: vault-certs
+        emptyDir: {}
+      - name: tmp
+        emptyDir: {}
+      {{- if eq .Values.vault.audit.useLoggingVolume true }}
+      - name: log-dir
+        {{- include "helm-lib.pvcStorage" (dict "claim" "logVolumeClaim" "Release" .Release "Template" .Template "Values" .Values ) | nindent 8 }}
+      {{- else }}
+      - name: log-dir
+        emptyDir: {}
+      {{- end }}

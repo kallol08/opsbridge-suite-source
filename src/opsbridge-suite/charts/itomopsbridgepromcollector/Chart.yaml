@@ -1,0 +1,9 @@
+apiVersion: v2
+appVersion: 24.2-52
+dependencies:
+- name: helm-lib
+  repository: https://orgartifactory.swinfra.net/artifactory/itom-helm-charts-stable
+  version: 1.9.0-14
+description: OpenText ITOM OpsBridge Prometheus Collector
+name: itomopsbridgepromcollector
+version: 1.0.0-63

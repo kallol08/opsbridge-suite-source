@@ -1,0 +1,152 @@
+#
+# Copyright 2023 Open Text.
+#
+# The only warranties for products and services of Open Text and its affiliates and licensors (“Open Text”)
+# are as may be set forth in the express warranty statements accompanying such products and services.
+# Nothing herein should be construed as constituting an additional warranty. Open Text shall not be liable
+# for technical or editorial errors or omissions contained herein. The information contained herein is subject
+# to change without notice.
+#
+# Except as specifically indicated otherwise, this document contains confidential information and a valid
+# license is required for possession, use or copying. If this work is provided to the U.S. Government,
+# consistent with FAR 12.211 and 12.212, Commercial Computer Software, Computer Software
+# Documentation, and Technical Data for Commercial Items are licensed to the U.S. Government under
+# vendor’s standard commercial license.
+#
+
+global:
+  expose:
+    ipConfig:
+      ipFamilyPolicy: PreferDualStack
+      ipFamilies:
+  persistence:
+    enabled: false
+
+  # For custom server CAs (incl. for Vertica). tlsTruststore should be the name of a configMap which contains the certs.
+  tlsTruststore:
+
+  # If deployPrometheusConfig is true, CDF Monitoring Framework is assumed to be installed and will use it for metric storage
+  prometheus:
+    deployPrometheusConfig: true
+    prometheusSelector:
+      prometheus_config: "1"
+    scrapeCertSecretName: "itom-di-prometheus-scrape-cert"
+    scrapeCaConfigmapName: "monitoring-ca-certificates"
+    deployGrafanaConfig: true
+    grafanaSelector:
+      grafana_dashboard: "1"
+
+  #Will be used as a suffix for schema names
+  di:
+    tenant: "provider"
+    deployment: "default"
+    multiTenantEnabled: false
+    pulsar:
+      tenant:
+    monitoring:
+      deployPulsarDashboards: true
+      deployOpticDataLakeDashboards: true
+    prometheus:
+      alerts:
+        enabled: true
+
+  # RBAC 
+  rbac:
+    serviceAccountCreate: true
+    roleCreate: true
+    clusterRoleCreate: true
+    
+  nodeSelector: {}
+
+  # If isDemo is true, this will allow use of ephemeral storage and other POC aspects.
+  isDemo: false
+
+  docker:
+    # set the global.docker.registry and orgName to your internal Docker registry/org
+    registry: localhost:5000
+    orgName: hpeswitom
+    imagePullSecret: ""
+    imagePullPolicy: IfNotPresent
+
+  vertica:
+    embedded: false
+    host: 
+    port: 
+    db: 
+    rwuser: 
+    rwuserkey: ITOMDI_DBA_PASSWORD_KEY
+    rouser: 
+    rouserkey: ITOMDI_DBA_PASSWORD_KEY
+    tlsEnabled: "true"
+    # tlsMode: "" # acceptable values ["server", "server-strict"]
+
+  securityContext:
+    user: "1999"
+    fsGroup: "1999"
+
+  # Global image references for vault
+  vaultRenew:
+    #registry:
+    #orgName:
+    image: kubernetes-vault-renew
+    imageTag: 0.10.0-0019
+  vaultInit:
+    #registry:
+    #orgName:
+    image: kubernetes-vault-init
+    imageTag: 0.10.0-0019
+  toolsBase:
+    image: itom-tools-base
+    imageTag: 1.1.0-0018
+ 
+nodeSelector: {}
+deployment:
+  rbac:
+    serviceAccount: ""
+    clusterRole: ""
+monitoring:
+  isBase64Encoded: false
+
+  verticapromexporter:
+    # registry:
+    # orgName:
+    image: itom-data-ingestion-vertica-prom-exporter
+    imageTag: 2.12.1-2
+    component: verticapromexporter
+    enabled: true
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: 100m
+      limits:
+        memory: 512Mi
+        cpu: 250m
+    configData:
+      schedulerMetricsTable:
+    config:
+      queryTimeoutSec: 5
+      scrapeIntervalSec: 60
+      tableParallelism: 8
+      promtlsMode:
+      monitoringResourcePool:
+    probe:
+      readiness:
+        enabled: true
+        initialDelaySeconds: 0
+        periodSeconds: 90
+        timeoutSeconds: 5
+        failureThreshold: 1
+        successThreshold: 1
+      startup:
+        enabled: true
+        periodSeconds: 1
+        timeoutSeconds: 5
+        failureThreshold: 60
+  
+  gencerts:
+    # registry:
+    # orgName:
+    image: itom-data-ingestion-monitoring-gen-certs
+    imageTag: 2.12.1-3
+    component: gen-certs
+    scheduleCron: "0 0 * * 0" # once a week

@@ -1,0 +1,9 @@
+apiVersion: v2
+appVersion: 1.8.0-40
+dependencies:
+- name: helm-lib
+  repository: ""
+  version: 1.11.0-4
+description: Reloader chart that runs on kubernetes
+name: itom-reloader
+version: 1.8.0-40

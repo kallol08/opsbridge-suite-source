@@ -1,0 +1,80 @@
+global:
+  # persistence.enabled=true means that the PVCs are expected to be dynamically created by the composition chart.
+  # Otherwise, persistence.dataVolumeClaim is a persistent volume claim for storing data files.
+  # persistence.logVolumeClaim is a persistent volume claim for storing log files.
+  # If all of the above are undefined, then temporary ephemeral storage will be created (only if isDemo=true)
+  busybox:
+    image: itom-busybox
+    imageTag: 1.32.0-006
+  toolsBase:
+    image: itom-tools-base
+    imageTag: 1.1.0-0011
+  persistence:
+    enabled: false
+    configVolumeClaim:
+    logVolumeClaim:
+
+  # If isDemo is true, this will allow use of ephemeral storage and other POC aspects.
+  isDemo: false
+  nodeSelector: {}
+  docker:
+    # set the global.docker.registry and orgName to your internal Docker registry/org
+    registry: itom-docker.orgartifactory.swinfra.net:443
+    orgName: hpeswitomsandbox
+    imagePullSecret: ""
+    imagePullPolicy: IfNotPresent
+
+  securityContext:
+    user: "1999"
+    fsGroup: "1999"
+
+  vault:
+    realmList: "RE:365"
+
+  # Global image references for vault
+  vaultRenew:
+    image: kubernetes-vault-renew
+    imageTag: 0.8.0-004
+  vaultInit:
+    image: kubernetes-vault-init
+    imageTag: 0.8.0-004
+    
+  prometheus:
+    deployPrometheusConfig: true      #true = deploy scraping rules (ServiceMonitor, PodMonitor) and alerts (PrometheusRule)
+    deployGrafanaConfig: true         #true = deploy configmaps defining the Grafana dashboards
+    prometheusSelector:               #define the label(s) that Prometheus looks for when discovering rules.
+      prometheus_config: "1"
+    grafanaSelector:                  #define the label(s) that Grafana looks for when discovering dashboards.
+      grafana_dashboard: "1"
+      
+  rbac:
+    serviceAccountCreate: true
+    roleCreate: true
+deployment:
+  rbac:
+    serviceAccount: itom-monitoring-sis-adapter-sa
+    roleBinding: itom-monitoring-sis-adapter-rb
+sisAdapter:
+  image: itom-monitoring-sis-adapter
+  imageTag: 1.6.0-131
+  managedby: Microfocus
+  capname: sis-adapter
+  replicaCount: 1
+  sislogLevel: error
+  updateSiSVersionTime: 15.0
+redis:
+  svcname: cs-redis
+  port: "6380"
+  srvbasename: cs-redis
+  passwdkey: redis_pwd
+  # redis connection dial timeout(milliseconds) for establishing new connections.
+  redisConnTimeOutMs: 60000
+  # number of redis idle connections.
+  redisMaxIdleConn: 10
+rcp:
+  enabled: true
+  maxIdleconns: 25
+  maxConnPerHost: 0
+  idleConnTimeOut: 900
+  maxIdleConnPerHost: 10
+  connTimeout: 60 

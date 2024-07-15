@@ -1,0 +1,121 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: itom-analytics-auto-correlation-closer-job
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- template "aec.defaultLabels" (dict "NameSuffix" "auto-correlation-closer-job" "Version" .Values.aecImages.flinkPipeline.imageTag "Component" "aec-closer-job" "HelmRelease" .Release.Name "Chart" .Chart) }}
+spec:
+  schedule: "0 5 * * *"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 300
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      ttlSecondsAfterFinished: 172800 # Delete job after 2 days. Else failed jobs could be kept forever
+      template:
+        metadata:
+          annotations:
+            {{- if .Values.global.vaultAppRole }}
+            pod.boostport.com/vault-approle: {{ .Release.Namespace }}-{{ .Values.global.vaultAppRole }}
+            {{- else }}
+            pod.boostport.com/vault-approle: {{ .Release.Namespace }}-default
+            {{- end }}
+            pod.boostport.com/vault-init-container: install
+          labels:
+            itom.microfocus.com/capability: aiops
+        spec:
+          serviceAccountName: {{ .Values.deployment.rbac.serviceAccount }}
+          securityContext:
+            runAsUser: {{ .Values.global.securityContext.user }}
+            runAsGroup: {{ .Values.global.securityContext.fsGroup }}
+            fsGroup: {{ .Values.global.securityContext.fsGroup }}
+            runAsNonRoot: true
+          initContainers:
+          {{- include "helm-lib.containers.vaultInit" (dict "certNames" "itom-analytics" "Values" .Values) | nindent 10 }}
+          containers:
+          - name: correlation-closer
+            image:  {{ coalesce .Values.aecImages.flinkPipeline.dockerRegistry .Values.docker.registry .Values.global.docker.registry -}}
+            / {{- coalesce .Values.aecImages.flinkPipeline.orgName .Values.docker.orgName .Values.global.docker.orgName -}}
+            / {{- .Values.aecImages.flinkPipeline.image -}}
+            : {{- .Values.aecImages.flinkPipeline.imageTag }}
+            imagePullPolicy: {{ .Values.global.docker.imagePullPolicy }}
+            command:
+              - /aec-correlation-closer.sh
+            env:
+              - name: TLS_SECRET_NAME
+                value: {{ .Values.flinkPipeline.secretName }}
+              - name: "DI_DATA_SET_SCHEMA"
+                value: "mf_shared_{{ if hasKey .Values.global.di "tenant" }} {{- .Values.global.di.tenant -}} {{ else -}} provider {{- end }}_{{ .Values.global.di.deployment }}"
+              - name: IS_VERTICA_EMBEDDED
+                value: "{{ .Values.global.vertica.embedded }}"
+              - name: EXTERNAL_VERTICA_HOSTNAMES
+                value: {{ .Values.global.vertica.host }}
+              - name: EXTERNAL_VERTICA_PORT
+                value: "{{ .Values.global.vertica.port }}"
+              - name: EXTERNAL_VERTICA_DB
+                value: {{ .Values.global.vertica.db }}
+              - name: EXTERNAL_VERTICA_USERNAME
+                value: {{ .Values.global.vertica.rwuser }}
+              - name: EXTERNAL_VERTICA_PASS_KEY
+                value: {{ .Values.global.vertica.rwuserkey }}
+              - name: "AEC_BACKGROUND_POOL"
+                value: {{ .Values.deployment.vertica.aecBackgroundResourcepool }}
+              - name: "EXTERNAL_VERTICA_TLS_MODE"
+                {{- if .Values.global.vertica.tlsEnabled }}
+                value: {{ .Values.deployment.vertica.tlsMode }}
+                {{- else }}
+                value: disable
+                {{- end }}
+              - name: SOURCE
+                value: "obm"
+              - name: PROCESSING_CORRELATION_DELAY_MILLISECONDS
+                value: "0"
+              - name: MISSING_SYMPTOM_AS_CLOSED
+                value: "true"
+              - name: OBM_FILTER_NAME
+                value: "AEC Correlation older than 1 day"
+            volumeMounts:
+              {{- if (hasKey .Values.global "tlsTruststore") }}
+              - name: {{ .Values.externalCerts.volumeName }}
+                mountPath: /service/conf/vertica
+                readOnly: true
+              {{- end }}
+              - name: vault-token
+                mountPath: /var/run/secrets/boostport.com
+              - name: tmp-storage
+                mountPath: /opt/flink/conf
+              - name: conf-storage
+                mountPath: /mnt/nfs/conf
+                subPath: itom-analytics/aec-pipeline
+              - name: log-storage
+                mountPath: /opt/flink/log
+                subPath: itom-analytics/aec-pipeline
+            resources:
+              requests:
+                memory: "128Mi"
+                cpu: "0.1"
+              limits:
+                memory: "512Mi"
+                cpu: "1"
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: false
+          restartPolicy: Never
+          {{- with ( coalesce .Values.nodeSelector .Values.global.nodeSelector ) }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumes:
+          {{ include "aec.externalCertsVolume" . | indent 10 }}
+          - name: vault-token
+            emptyDir:
+              medium: Memory
+          - name: tmp-storage
+            emptyDir:
+              medium: Memory
+          - name: conf-storage
+          {{- include "helm-lib.pvcStorage" (dict "claim" "configVolumeClaim" "Release" .Release "Template" .Template "Values" .Values) | nindent 12 }}
+          - name: log-storage
+          {{- include "helm-lib.pvcStorage" (dict "claim" "logVolumeClaim" "Release" .Release "Template" .Template "Values" .Values) | nindent 12 }}

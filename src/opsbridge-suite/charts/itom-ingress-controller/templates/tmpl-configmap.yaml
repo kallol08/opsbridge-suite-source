@@ -1,0 +1,9 @@
+{{ $namePrefix := include "namePrefix" . }}
+{{- if hasSuffix "frontend-ui" .Values.nginx.defaultBackendService }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $namePrefix }}-nginx-ingress-template
+data:
+  {{- (.Files.Glob "cfg/nginx.tmpl").AsConfig | nindent 2 }}
+{{- end }}

@@ -1,0 +1,12 @@
+{
+  "suite": "prometheus-cert-exporter",
+  "display_name": "A Helm chart for prometheus cert-exporter",
+  "org_name": "hpeswitom",
+  "version": "1.14.0-111",
+  "images": [
+    { "image": "itom-k8s-sidecar:1.6.0-0029" },
+    { "image": "itom-prometheus-exporter-cert:1.14.0-00111" },
+    { "image": "kubernetes-vault-init:0.21.0-0046" },
+    { "image": "kubernetes-vault-renew:0.21.0-0046" }
+  ]
+}

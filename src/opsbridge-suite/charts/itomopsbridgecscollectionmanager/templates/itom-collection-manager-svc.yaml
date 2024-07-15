@@ -1,0 +1,31 @@
+{{/*# Copyright 2023 Open Text.*/}}
+
+{{/*# The only warranties for products and services of Open Text and its affiliates*/}}
+{{/*# and licensors ("Open Text") are as may be set forth in the express warranty*/}}
+{{/*# statements accompanying such products and services. Nothing herein should be*/}}
+{{/*# construed as constituting an additional warranty. Open Text shall not be*/}}
+{{/*# liable for technical or editorial errors or omissions contained herein. The*/}}
+{{/*# information contained herein is subject to change without notice.*/}}
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: itom-monitoring-collection-manager-svc
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: itom-monitoring-collection-manager-app
+    app.kubernetes.io/name: itom-opsbridge-cs-collection-manager
+    app.kubernetes.io/managed-by: {{ .Release.Name }}
+    app.kubernetes.io/version: {{ .Values.collectionmanager.imageTag }}
+    itom.microfocus.com/capability: HyperscaleObservability
+    tier.itom.microfocus.com/backend: backend
+    itom.microfocus.com/description: CSCollection_Manager
+spec:
+{{/*  #sessionAffinity: ClientIP*/}}
+  ipFamilyPolicy: PreferDualStack
+  ports:
+  - name: cm-http
+    port: 80
+    targetPort: 80
+  selector:
+    app: itom-monitoring-collection-manager-app

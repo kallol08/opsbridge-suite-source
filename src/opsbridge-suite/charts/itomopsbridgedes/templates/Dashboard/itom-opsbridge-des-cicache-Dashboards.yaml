@@ -1,0 +1,1463 @@
+{{/*# Copyright 2023 Open Text.*/}}
+
+{{/*# The only warranties for products and services of Open Text and its affiliates*/}}
+{{/*# and licensors ("Open Text") are as may be set forth in the express warranty*/}}
+{{/*# statements accompanying such products and services. Nothing herein should be*/}}
+{{/*# construed as constituting an additional warranty. Open Text shall not be*/}}
+{{/*# liable for technical or editorial errors or omissions contained herein. The*/}}
+{{/*# information contained herein is subject to change without notice.*/}}
+
+{{/*#*/}}
+{{/*# Licensed to the Apache Software Foundation (ASF) under one*/}}
+{{/*# or more contributor license agreements.  See the NOTICE file*/}}
+{{/*# distributed with this work for additional information*/}}
+{{/*# regarding copyright ownership.  The ASF licenses this file*/}}
+{{/*# to you under the Apache License, Version 2.0 (the*/}}
+{{/*# "License"); you may not use this file except in compliance*/}}
+{{/*# with the License.  You may obtain a copy of the License at*/}}
+{{/*#*/}}
+{{/*#   http://www.apache.org/licenses/LICENSE-2.0*/}}
+{{/*#*/}}
+{{/*# Unless required by applicable law or agreed to in writing,*/}}
+{{/*# software distributed under the License is distributed on an*/}}
+{{/*# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY*/}}
+{{/*# KIND, either express or implied.  See the License for the*/}}
+{{/*# specific language governing permissions and limitations*/}}
+{{/*# under the License.*/}}
+{{/*#*/}}
+{{ if .Values.global.prometheus.deployGrafanaConfig }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: itom-opsbridge-des-cicache
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: itom-opsbridge
+    {{- toYaml .Values.global.prometheus.grafanaSelector | nindent 4 }}
+  annotations:
+    {{- include "dashboards.annotation.folder" . | nindent 4 }}
+data:
+  descicache.json: |
+    {{`{
+        "annotations": {
+            "list": [
+              {
+                "builtIn": 1,
+                "datasource": "-- Grafana --",
+                "enable": true,
+                "hide": true,
+                "iconColor": "rgba(0, 211, 255, 1)",
+                "name": "Annotations & Alerts",
+                "target": {
+                  "limit": 100,
+                  "matchAny": false,
+                  "tags": [],
+                  "type": "dashboard"
+                },
+                "type": "dashboard"
+              }
+            ]
+          },
+          "editable": true,
+          "fiscalYearStartMonth": 0,
+          "graphTooltip": 0,
+          "id": 74,
+          "iteration": 1657538927342,
+          "links": [],
+          "liveNow": false,
+          "panels": [
+            {
+              "collapsed": false,
+              "gridPos": {
+                "h": 1,
+                "w": 24,
+                "x": 0,
+                "y": 0
+              },
+              "id": 20,
+              "panels": [],
+              "title": "Pod Overview",
+              "type": "row"
+            },
+            {
+              "description": "This panel shows number of currently running containers in the $name Pod(s). The containers include: $name, job fetcher and result processor.",
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "thresholds"
+                  },
+                  "mappings": [
+                    {
+                      "options": {
+                        "match": "null",
+                        "result": {
+                          "text": "N/A"
+                        }
+                      },
+                      "type": "special"
+                    }
+                  ],
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "green",
+                        "value": null
+                      },
+                      {
+                        "color": "red",
+                        "value": 80
+                      }
+                    ]
+                  },
+                  "unit": "none"
+                },
+                "overrides": []
+              },
+              "gridPos": {
+                "h": 3,
+                "w": 4,
+                "x": 0,
+                "y": 1
+              },
+              "id": 43,
+              "links": [],
+              "maxDataPoints": 100,
+              "options": {
+                "colorMode": "none",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "horizontal",
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "text": {},
+                "textMode": "auto"
+              },
+              "pluginVersion": "8.3.4",
+              "targets": [
+                {
+                  "datasource": {
+                    "type": "prometheus"
+                  },
+                  "exemplar": false,
+                  "expr": "count(up{pod=~\"$Pod\"} == 1)",
+                  "format": "time_series",
+                  "hide": false,
+                  "instant": true,
+                  "interval": "",
+                  "intervalFactor": 1,
+                  "legendFormat": "",
+                  "refId": "A"
+                }
+              ],
+              "title": "Total Pods",
+              "type": "stat"
+            },
+            {
+              "description": "This Panel gives the current average CPU being used by all the running $name pods.",
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "thresholds"
+                  },
+                  "decimals": 2,
+                  "mappings": [
+                    {
+                      "id": 0,
+                      "op": "=",
+                      "text": "N/A",
+                      "type": 1,
+                      "value": "null"
+                    }
+                  ],
+                  "max": 100,
+                  "min": 0,
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "#37872D",
+                        "value": null
+                      },
+                      {
+                        "color": "#FF9830",
+                        "value": 65
+                      },
+                      {
+                        "color": "rgba(245, 54, 54, 0.9)",
+                        "value": 90
+                      }
+                    ]
+                  },
+                  "unit": "percent"
+                },
+                "overrides": []
+              },
+              "gridPos": {
+                "h": 7,
+                "w": 10,
+                "x": 4,
+                "y": 1
+              },
+              "id": 16,
+              "links": [],
+              "options": {
+                "orientation": "auto",
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "showThresholdLabels": false,
+                "showThresholdMarkers": true
+              },
+              "pluginVersion": "8.3.4",
+              "targets": [
+                {
+                  "datasource": {
+                    "type": "prometheus"
+                  },
+                  "exemplar": true,
+                  "expr": "sum(node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate{pod=~\"$Pod\",container=~\"$Container\"}) by (container) / sum(cluster:namespace:pod_cpu:active:kube_pod_container_resource_limits{pod=~\"$Pod\",container=~\"$Container\",container!=\"kubernetes-vault-renew\"}) by (container) * 100",
+                  "hide": false,
+                  "instant": false,
+                  "interval": "10s",
+                  "intervalFactor": 1,
+                  "legendFormat": "{{container}}",
+                  "refId": "A",
+                  "step": 10
+                }
+              ],
+              "title": "CPU usage",
+              "type": "gauge"
+            },
+            {
+              "description": "This Panel gives the current average memory being used by all the running receiver pods.",
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "thresholds"
+                  },
+                  "mappings": [
+                    {
+                      "id": 0,
+                      "op": "=",
+                      "text": "N/A",
+                      "type": 1,
+                      "value": "null"
+                    }
+                  ],
+                  "max": 100,
+                  "min": 0,
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "#37872D",
+                        "value": null
+                      },
+                      {
+                        "color": "rgba(237, 129, 40, 0.89)",
+                        "value": 75
+                      },
+                      {
+                        "color": "#C4162A",
+                        "value": 90
+                      }
+                    ]
+                  },
+                  "unit": "percent"
+                },
+                "overrides": []
+              },
+              "gridPos": {
+                "h": 7,
+                "w": 10,
+                "x": 14,
+                "y": 1
+              },
+              "id": 18,
+              "links": [],
+              "options": {
+                "orientation": "vertical",
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "showThresholdLabels": false,
+                "showThresholdMarkers": true
+              },
+              "pluginVersion": "8.3.4",
+              "targets": [
+                {
+                  "datasource": {
+                    "type": "prometheus"
+                  },
+                  "exemplar": true,
+                  "expr": "sum (container_memory_working_set_bytes{pod=~\"$Pod\",container=~\"$Container\",container!=\"kubernetes-vault-renew\"})  by (container)  / sum (cluster:namespace:pod_memory:active:kube_pod_container_resource_limits{pod=~\"$Pod\",container=~\"$Container\",container!=\"kubernetes-vault-renew\"}) by (container)*100",
+                  "interval": "10s",
+                  "intervalFactor": 1,
+                  "legendFormat": "{{container}}",
+                  "refId": "A",
+                  "step": 10
+                }
+              ],
+              "title": "Memory usage",
+              "type": "gauge"
+            },
+            {
+              "description": "This panel shows the percentage of running containers in the $name Pod(s). The containers include: $name",
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "thresholds"
+                  },
+                  "mappings": [
+                    {
+                      "options": {
+                        "match": "null",
+                        "result": {
+                          "text": "N/A"
+                        }
+                      },
+                      "type": "special"
+                    }
+                  ],
+                  "max": 100,
+                  "min": 0,
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "#C4162A",
+                        "value": null
+                      },
+                      {
+                        "color": "rgba(237, 129, 40, 0.89)",
+                        "value": 60
+                      },
+                      {
+                        "color": "dark-green",
+                        "value": 90
+                      }
+                    ]
+                  },
+                  "unit": "percent"
+                },
+                "overrides": []
+              },
+              "gridPos": {
+                "h": 4,
+                "w": 4,
+                "x": 0,
+                "y": 4
+              },
+              "id": 45,
+              "links": [],
+              "maxDataPoints": 100,
+              "options": {
+                "orientation": "horizontal",
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "showThresholdLabels": false,
+                "showThresholdMarkers": true,
+                "text": {}
+              },
+              "pluginVersion": "8.3.4",
+              "targets": [
+                {
+                  "datasource": {
+                    "type": "prometheus"
+                  },
+                  "exemplar": true,
+                  "expr": "100 * count(up{pod=~\"$Pod\"} == 1) / count(up{pod=~\"$Pod\"})",
+                  "format": "time_series",
+                  "instant": false,
+                  "interval": "",
+                  "intervalFactor": 1,
+                  "legendFormat": "",
+                  "refId": "A"
+                }
+              ],
+              "title": "Running Pods",
+              "type": "gauge"
+            },
+            {
+              "collapsed": false,
+              "gridPos": {
+                "h": 1,
+                "w": 24,
+                "x": 0,
+                "y": 8
+              },
+              "id": 22,
+              "panels": [],
+              "title": "Pod Custom Metrics",
+              "type": "row"
+            },
+            {
+              "description": "Time taken to fetch the view details from UCMDB and update the details in REDIS",
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "continuous-GrYlRd"
+                  },
+                  "custom": {
+                    "fillOpacity": 70,
+                    "lineWidth": 0
+                  },
+                  "mappings": [],
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "green",
+                        "value": null
+                      },
+                      {
+                        "color": "red",
+                        "value": 30000
+                      }
+                    ]
+                  },
+                  "unit": "ms"
+                },
+                "overrides": []
+              },
+              "gridPos": {
+                "h": 9,
+                "w": 12,
+                "x": 0,
+                "y": 9
+              },
+              "id": 2,
+              "options": {
+                "alignValue": "left",
+                "legend": {
+                  "displayMode": "list",
+                  "placement": "bottom"
+                },
+                "mergeValues": true,
+                "rowHeight": 0.9,
+                "showValue": "auto",
+                "tooltip": {
+                  "mode": "single"
+                }
+              },
+              "pluginVersion": "8.3.4",
+              "targets": [
+                {
+                  "datasource": {
+                    "type": "prometheus"
+                  },
+                  "exemplar": true,
+                  "expr": "loadViewSuccess",
+                  "format": "time_series",
+                  "interval": "",
+                  "legendFormat": "{{ViewName}}",
+                  "refId": "A"
+                }
+              ],
+              "title": "Time taken to load View Success ",
+              "type": "state-timeline"
+            },
+            {
+              "description": "Time taken to failure of load view",
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "custom": {
+                    "axisLabel": "",
+                    "axisPlacement": "auto",
+                    "barAlignment": 0,
+                    "drawStyle": "line",
+                    "fillOpacity": 0,
+                    "gradientMode": "none",
+                    "hideFrom": {
+                      "legend": false,
+                      "tooltip": false,
+                      "viz": false
+                    },
+                    "lineInterpolation": "linear",
+                    "lineWidth": 1,
+                    "pointSize": 5,
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "showPoints": "auto",
+                    "spanNulls": false,
+                    "stacking": {
+                      "group": "A",
+                      "mode": "none"
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  },
+                  "mappings": [],
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "green",
+                        "value": null
+                      },
+                      {
+                        "color": "red",
+                        "value": 80
+                      }
+                    ]
+                  },
+                  "unit": "ms"
+                },
+                "overrides": []
+              },
+              "gridPos": {
+                "h": 9,
+                "w": 12,
+                "x": 12,
+                "y": 9
+              },
+              "id": 37,
+              "options": {
+                "legend": {
+                  "calcs": [],
+                  "displayMode": "list",
+                  "placement": "bottom"
+                },
+                "tooltip": {
+                  "mode": "single"
+                }
+              },
+              "pluginVersion": "8.3.4",
+              "targets": [
+                {
+                  "datasource": {
+                    "type": "prometheus"
+                  },
+                  "exemplar": true,
+                  "expr": "loadViewFailure",
+                  "format": "time_series",
+                  "interval": "",
+                  "legendFormat": "{{ViewName}}",
+                  "refId": "A"
+                }
+              ],
+              "title": "Time taken to Retry Failed View",
+              "type": "timeseries"
+            },
+            {
+              "description": "No. of Retrieved CI's for the view from the UCMDB ",
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "custom": {
+                    "axisLabel": "",
+                    "axisPlacement": "auto",
+                    "barAlignment": 0,
+                    "drawStyle": "line",
+                    "fillOpacity": 0,
+                    "gradientMode": "none",
+                    "hideFrom": {
+                      "legend": false,
+                      "tooltip": false,
+                      "viz": false
+                    },
+                    "lineInterpolation": "linear",
+                    "lineWidth": 1,
+                    "pointSize": 5,
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "showPoints": "auto",
+                    "spanNulls": false,
+                    "stacking": {
+                      "group": "A",
+                      "mode": "none"
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  },
+                  "mappings": [],
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "green",
+                        "value": null
+                      },
+                      {
+                        "color": "red",
+                        "value": 30000
+                      }
+                    ]
+                  },
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "gridPos": {
+                "h": 7,
+                "w": 8,
+                "x": 0,
+                "y": 18
+              },
+              "id": 39,
+              "options": {
+                "legend": {
+                  "calcs": [],
+                  "displayMode": "list",
+                  "placement": "bottom"
+                },
+                "tooltip": {
+                  "mode": "single"
+                }
+              },
+              "pluginVersion": "8.3.4",
+              "targets": [
+                {
+                  "datasource": {
+                    "type": "prometheus"
+                  },
+                  "exemplar": true,
+                  "expr": "RTSM_CIID_Count_total",
+                  "format": "time_series",
+                  "interval": "",
+                  "legendFormat": "{{ViewName}}",
+                  "refId": "A"
+                }
+              ],
+              "title": "Retrieved CI's from RTSM",
+              "type": "timeseries"
+            },
+            {
+              "description": "No. of CI's added/ updated for view in Redis",
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "custom": {
+                    "axisLabel": "",
+                    "axisPlacement": "auto",
+                    "barAlignment": 0,
+                    "drawStyle": "line",
+                    "fillOpacity": 0,
+                    "gradientMode": "none",
+                    "hideFrom": {
+                      "legend": false,
+                      "tooltip": false,
+                      "viz": false
+                    },
+                    "lineInterpolation": "linear",
+                    "lineWidth": 1,
+                    "pointSize": 5,
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "showPoints": "auto",
+                    "spanNulls": false,
+                    "stacking": {
+                      "group": "A",
+                      "mode": "none"
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  },
+                  "mappings": [],
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "green",
+                        "value": null
+                      },
+                      {
+                        "color": "red",
+                        "value": 30000
+                      }
+                    ]
+                  },
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "gridPos": {
+                "h": 7,
+                "w": 8,
+                "x": 8,
+                "y": 18
+              },
+              "id": 40,
+              "options": {
+                "legend": {
+                  "calcs": [],
+                  "displayMode": "list",
+                  "placement": "bottom"
+                },
+                "tooltip": {
+                  "mode": "single"
+                }
+              },
+              "pluginVersion": "8.3.4",
+              "targets": [
+                {
+                  "datasource": {
+                    "type": "prometheus"
+                  },
+                  "exemplar": true,
+                  "expr": "RedisAddUpdateCI_total",
+                  "format": "time_series",
+                  "interval": "",
+                  "legendFormat": "{{ViewName}}",
+                  "refId": "A"
+                }
+              ],
+              "title": "Add / Updated CI's in Redis",
+              "type": "timeseries"
+            },
+            {
+              "description": "No. of Deleted CI's for view in Redis",
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "custom": {
+                    "axisLabel": "",
+                    "axisPlacement": "auto",
+                    "barAlignment": 0,
+                    "drawStyle": "line",
+                    "fillOpacity": 0,
+                    "gradientMode": "none",
+                    "hideFrom": {
+                      "legend": false,
+                      "tooltip": false,
+                      "viz": false
+                    },
+                    "lineInterpolation": "linear",
+                    "lineWidth": 1,
+                    "pointSize": 5,
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "showPoints": "auto",
+                    "spanNulls": false,
+                    "stacking": {
+                      "group": "A",
+                      "mode": "none"
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  },
+                  "mappings": [],
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "green",
+                        "value": null
+                      },
+                      {
+                        "color": "red",
+                        "value": 30000
+                      }
+                    ]
+                  },
+                  "unit": "short"
+                },
+                "overrides": [
+                  {
+                    "__systemRef": "hideSeriesFrom",
+                    "matcher": {
+                      "id": "byNames",
+                      "options": {
+                        "mode": "exclude",
+                        "names": [
+                          "Oracle_Database_Deployment"
+                        ],
+                        "prefix": "All except:",
+                        "readOnly": true
+                      }
+                    },
+                    "properties": [
+                      {
+                        "id": "custom.hideFrom",
+                        "value": {
+                          "legend": false,
+                          "tooltip": false,
+                          "viz": true
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              "gridPos": {
+                "h": 7,
+                "w": 8,
+                "x": 16,
+                "y": 18
+              },
+              "id": 41,
+              "options": {
+                "legend": {
+                  "calcs": [],
+                  "displayMode": "list",
+                  "placement": "bottom"
+                },
+                "tooltip": {
+                  "mode": "single"
+                }
+              },
+              "pluginVersion": "8.3.4",
+              "targets": [
+                {
+                  "datasource": {
+                    "type": "prometheus"
+                  },
+                  "exemplar": true,
+                  "expr": "RedisDeletedCI_total",
+                  "format": "time_series",
+                  "interval": "",
+                  "legendFormat": "{{ViewName}}",
+                  "refId": "A"
+                }
+              ],
+              "title": "Deleted CI's in Redis",
+              "type": "timeseries"
+            },
+            {
+              "description": "No. of deleted stale CI's from the Redis ",
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "custom": {
+                    "axisLabel": "",
+                    "axisPlacement": "auto",
+                    "barAlignment": 0,
+                    "drawStyle": "line",
+                    "fillOpacity": 0,
+                    "gradientMode": "none",
+                    "hideFrom": {
+                      "legend": false,
+                      "tooltip": false,
+                      "viz": false
+                    },
+                    "lineInterpolation": "linear",
+                    "lineWidth": 1,
+                    "pointSize": 5,
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "showPoints": "auto",
+                    "spanNulls": false,
+                    "stacking": {
+                      "group": "A",
+                      "mode": "none"
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  },
+                  "mappings": [],
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "green",
+                        "value": null
+                      },
+                      {
+                        "color": "red",
+                        "value": 30000
+                      }
+                    ]
+                  },
+                  "unit": "short"
+                },
+                "overrides": [
+                  {
+                    "__systemRef": "hideSeriesFrom",
+                    "matcher": {
+                      "id": "byNames",
+                      "options": {
+                        "mode": "exclude",
+                        "names": [
+                          "StaleCIID"
+                        ],
+                        "prefix": "All except:",
+                        "readOnly": true
+                      }
+                    },
+                    "properties": [
+                      {
+                        "id": "custom.hideFrom",
+                        "value": {
+                          "legend": false,
+                          "tooltip": false,
+                          "viz": true
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              "gridPos": {
+                "h": 8,
+                "w": 24,
+                "x": 0,
+                "y": 25
+              },
+              "id": 38,
+              "options": {
+                "legend": {
+                  "calcs": [],
+                  "displayMode": "list",
+                  "placement": "bottom"
+                },
+                "tooltip": {
+                  "mode": "single"
+                }
+              },
+              "pluginVersion": "8.3.4",
+              "targets": [
+                {
+                  "datasource": {
+                    "type": "prometheus"
+                  },
+                  "exemplar": true,
+                  "expr": "NumStaleCIID_total",
+                  "format": "time_series",
+                  "interval": "",
+                  "legendFormat": "StaleCIID",
+                  "refId": "A"
+                }
+              ],
+              "title": "Deleted Staled CI's from Redis",
+              "type": "timeseries"
+            },
+            {
+              "collapsed": false,
+              "gridPos": {
+                "h": 1,
+                "w": 24,
+                "x": 0,
+                "y": 33
+              },
+              "id": 24,
+              "panels": [],
+              "title": "Pod Details",
+              "type": "row"
+            },
+            {
+              "description": "This Panel gives the CPU utilization of the $name pod(s)\n",
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "custom": {
+                    "axisLabel": "",
+                    "axisPlacement": "auto",
+                    "barAlignment": 0,
+                    "drawStyle": "line",
+                    "fillOpacity": 10,
+                    "gradientMode": "none",
+                    "hideFrom": {
+                      "legend": false,
+                      "tooltip": false,
+                      "viz": false
+                    },
+                    "lineInterpolation": "linear",
+                    "lineWidth": 1,
+                    "pointSize": 5,
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "showPoints": "never",
+                    "spanNulls": false,
+                    "stacking": {
+                      "group": "A",
+                      "mode": "none"
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  },
+                  "decimals": 3,
+                  "links": [],
+                  "mappings": [],
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "green",
+                        "value": null
+                      },
+                      {
+                        "color": "red",
+                        "value": 80
+                      }
+                    ]
+                  },
+                  "unit": "cores"
+                },
+                "overrides": []
+              },
+              "gridPos": {
+                "h": 10,
+                "w": 12,
+                "x": 0,
+                "y": 34
+              },
+              "id": 26,
+              "options": {
+                "legend": {
+                  "calcs": [],
+                  "displayMode": "list",
+                  "placement": "bottom"
+                },
+                "tooltip": {
+                  "mode": "single"
+                }
+              },
+              "pluginVersion": "8.1.2",
+              "targets": [
+                {
+                  "datasource": {
+                    "type": "prometheus"
+                  },
+                  "exemplar": true,
+                  "expr": "sum(rate(container_cpu_usage_seconds_total{pod=~\"$Pod\", container=~\"$Container\", namespace=~\"$namespace\"}[1m])) by (container, pod)",
+                  "interval": "10s",
+                  "intervalFactor": 1,
+                  "legendFormat": "{{container}} {{pod}}",
+                  "refId": "A"
+                }
+              ],
+              "title": "$name CPU usage : ($Pod)",
+              "type": "timeseries"
+            },
+            {
+              "description": "This Panel gives the memory utilization of the $name pod(s)\n",
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "custom": {
+                    "axisLabel": "",
+                    "axisPlacement": "auto",
+                    "barAlignment": 0,
+                    "drawStyle": "line",
+                    "fillOpacity": 0,
+                    "gradientMode": "none",
+                    "hideFrom": {
+                      "legend": false,
+                      "tooltip": false,
+                      "viz": false
+                    },
+                    "lineInterpolation": "linear",
+                    "lineWidth": 1,
+                    "pointSize": 5,
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "showPoints": "never",
+                    "spanNulls": false,
+                    "stacking": {
+                      "group": "A",
+                      "mode": "none"
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  },
+                  "decimals": 3,
+                  "links": [],
+                  "mappings": [],
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "green",
+                        "value": null
+                      },
+                      {
+                        "color": "red",
+                        "value": 80
+                      }
+                    ]
+                  },
+                  "unit": "decbytes"
+                },
+                "overrides": []
+              },
+              "gridPos": {
+                "h": 10,
+                "w": 12,
+                "x": 12,
+                "y": 34
+              },
+              "id": 28,
+              "interval": "",
+              "options": {
+                "legend": {
+                  "calcs": [],
+                  "displayMode": "list",
+                  "placement": "bottom"
+                },
+                "tooltip": {
+                  "mode": "single"
+                }
+              },
+              "targets": [
+                {
+                  "datasource": {
+                    "type": "prometheus"
+                  },
+                  "exemplar": true,
+                  "expr": "avg(container_memory_working_set_bytes{pod=~\"$Pod\", container=~\"$Container\", namespace=~\"$namespace\"}) by(container, pod)",
+                  "interval": "10s",
+                  "intervalFactor": 1,
+                  "legendFormat": "{{container}} {{pod}}",
+                  "refId": "A"
+                }
+              ],
+              "title": "$name memory usage: ($Pod)",
+              "type": "timeseries"
+            },
+            {
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "custom": {
+                    "axisLabel": "",
+                    "axisPlacement": "auto",
+                    "barAlignment": 0,
+                    "drawStyle": "line",
+                    "fillOpacity": 0,
+                    "gradientMode": "none",
+                    "hideFrom": {
+                      "legend": false,
+                      "tooltip": false,
+                      "viz": false
+                    },
+                    "lineInterpolation": "linear",
+                    "lineWidth": 1,
+                    "pointSize": 5,
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "showPoints": "auto",
+                    "spanNulls": false,
+                    "stacking": {
+                      "group": "A",
+                      "mode": "none"
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  },
+                  "mappings": [],
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "green",
+                        "value": null
+                      },
+                      {
+                        "color": "red",
+                        "value": 80
+                      }
+                    ]
+                  }
+                },
+                "overrides": [
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": " "
+                    },
+                    "properties": [
+                      {
+                        "id": "color",
+                        "value": {
+                          "fixedColor": "red",
+                          "mode": "fixed"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              "gridPos": {
+                "h": 10,
+                "w": 12,
+                "x": 0,
+                "y": 44
+              },
+              "id": 34,
+              "options": {
+                "legend": {
+                  "calcs": [],
+                  "displayMode": "list",
+                  "placement": "bottom"
+                },
+                "tooltip": {
+                  "mode": "single"
+                }
+              },
+              "targets": [
+                {
+                  "datasource": {
+                    "type": "prometheus"
+                  },
+                  "exemplar": true,
+                  "expr": "increase(kube_pod_container_status_restarts_total{pod=~\"$Pod\", container=~\"$Container\", container!~\"kubernetes-vault-renew\", namespace=~\"$namespace\"}[5m])",
+                  "format": "time_series",
+                  "instant": false,
+                  "interval": "",
+                  "legendFormat": "{{container}} {{pod}}",
+                  "refId": "A"
+                },
+                {
+                  "datasource": {
+                    "type": "prometheus"
+                  },
+                  "exemplar": true,
+                  "expr": "kube_pod_container_status_last_terminated_reason{pod=~\"$Pod\", container=~\"$Container\", container!~\"kubernetes-vault-renew\", namespace=~\"$namespace\"}",
+                  "hide": false,
+                  "interval": "",
+                  "legendFormat": "Restart Reason - {{reason}}",
+                  "refId": "B"
+                }
+              ],
+              "title": "Pod Restart Timeline",
+              "type": "timeseries"
+            },
+            {
+              "description": "Total restart count observed",
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "thresholds"
+                  },
+                  "custom": {
+                    "align": "left",
+                    "displayMode": "auto",
+                    "filterable": true,
+                    "minWidth": 50
+                  },
+                  "mappings": [],
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "green",
+                        "value": null
+                      },
+                      {
+                        "color": "red",
+                        "value": 80
+                      }
+                    ]
+                  }
+                },
+                "overrides": []
+              },
+              "gridPos": {
+                "h": 10,
+                "w": 12,
+                "x": 12,
+                "y": 44
+              },
+              "id": 47,
+              "options": {
+                "footer": {
+                  "fields": "",
+                  "reducer": [
+                    "sum"
+                  ],
+                  "show": false
+                },
+                "frameIndex": 0,
+                "showHeader": true,
+                "sortBy": [
+                  {
+                    "desc": true,
+                    "displayName": "restart count"
+                  }
+                ]
+              },
+              "pluginVersion": "8.3.4",
+              "targets": [
+                {
+                  "exemplar": true,
+                  "expr": "kube_pod_container_status_restarts_total{pod=~\"$Pod\", container=~\"$Container\", container!~\"kubernetes-vault-renew\", namespace=~\"$namespace\"}",
+                  "format": "table",
+                  "instant": false,
+                  "interval": "",
+                  "legendFormat": "{{container}} {{pod}}",
+                  "refId": "A"
+                }
+              ],
+              "title": "Pod Restart Information",
+              "transformations": [
+                {
+                  "id": "groupBy",
+                  "options": {
+                    "fields": {
+                      "Value": {
+                        "aggregations": [
+                          "lastNotNull"
+                        ],
+                        "operation": "aggregate"
+                      },
+                      "container": {
+                        "aggregations": [],
+                        "operation": "groupby"
+                      },
+                      "pod": {
+                        "aggregations": [],
+                        "operation": "groupby"
+                      }
+                    }
+                  }
+                },
+                {
+                  "id": "organize",
+                  "options": {
+                    "excludeByName": {},
+                    "indexByName": {},
+                    "renameByName": {
+                      "Value (lastNotNull)": "Total Restart Count"
+                    }
+                  }
+                }
+              ],
+              "type": "table"
+            }
+          ],
+          "refresh": "30s",
+          "schemaVersion": 34,
+          "style": "dark",
+          "tags": [],`}}
+          "templating": {
+            "list": [
+              {
+                "current": {
+                  "selected": false,
+                  "text": "All",
+                  "value": "$__all"
+                },
+                "definition": "label_values(kube_pod_info{pod=~\"itom-opsbridge-des-cicache-builder.*\", namespace=~\"$namespace\"},pod) ",
+                "hide": 0,
+                "includeAll": true,
+                "label": "Pod",
+                "multi": false,
+                "name": "Pod",
+                "options": [],
+                "query": {
+                  "query": "label_values(kube_pod_info{pod=~\"itom-opsbridge-des-cicache-builder.*\", namespace=~\"$namespace\"},pod) ",
+                  "refId": "StandardVariableQuery"
+                },
+                "refresh": 2,
+                "regex": "",
+                "skipUrlSync": false,
+                "sort": 0,
+                "type": "query"
+              },
+              {
+                "current": {
+                  "selected": false,
+                  "text": "opsbridge-suite",
+                  "value": "opsbridge-suite"
+                },
+                "definition": "label_values(kube_pod_container_info{pod=~\"itom-opsbridge-des-cicache-builder.*\"},namespace) ",
+                "hide": 2,
+                "includeAll": false,
+                "multi": false,
+                "name": "namespace",
+                "options": [],
+                "query": {
+                  "query": "label_values(kube_pod_container_info{pod=~\"itom-opsbridge-des-cicache-builder.*\"},namespace) ",
+                  "refId": "StandardVariableQuery"
+                },
+                "refresh": 1,
+                "regex": "",
+                "skipUrlSync": false,
+                "sort": 0,
+                "type": "query"
+              },
+              {
+                "hide": 2,
+                "name": "name",
+                "query": "DES CI Cache Builder",
+                "skipUrlSync": false,
+                "type": "constant"
+              },
+              {
+                "current": {
+                  "selected": false,
+                  "text": "All",
+                  "value": "$__all"
+                },
+                "definition": "label_values(kube_pod_container_info{pod=~\"$Pod\",namespace=~\"$namespace\"},container) ",
+                "hide": 0,
+                "includeAll": true,
+                "multi": true,
+                "name": "Container",
+                "options": [],
+                "query": {
+                  "query": "label_values(kube_pod_container_info{pod=~\"$Pod\",namespace=~\"$namespace\"},container) ",
+                  "refId": "StandardVariableQuery"
+                },
+                "refresh": 1,
+                "regex": "",
+                "skipUrlSync": false,
+                "sort": 1,
+                "type": "query"
+              }
+            ]
+          },
+          "time": {
+            "from": "now-1h",
+            "to": "now"
+          },
+          "timepicker": {},
+          "timezone": "",
+          "title": "Data Enrichment Service – CI Cache Builder",
+          "uid": "DES-CICache-{{ .Release.Namespace }}",
+          "version": 1,
+          "weekStart": ""
+    }      
+  {{ end }}

@@ -1,0 +1,109 @@
+{{- if .Values.enableClusterLog }}
+{{ $namePrefix := include "namePrefix" . }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $namePrefix }}-logrotate-deployment
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    deployment.microfocus.com/default-replica-count: "1"
+    deployment.microfocus.com/runlevel: UP
+    deployment.microfocus.com/simple-update: ignore
+  labels:
+    deployments.microfocus.com/component: itom-logrotate-deployment
+    {{- if .Values.logrotate.labels }}
+    {{- toYaml .Values.logrotate.labels  | nindent 4 }}
+    {{- end }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      run: itom-logrotate-deployment
+  template:
+    metadata:
+      labels:
+        run: itom-logrotate-deployment
+        deployments.microfocus.com/component: itom-logrotate-deployment
+        {{- if .Values.logrotate.labels }}
+        {{- toYaml .Values.logrotate.labels  | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: itom-log-rotate-deployment
+      {{- with ( coalesce .Values.nodeSelector .Values.global.nodeSelector ) }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: itom-logrotate
+          image: "{{ .Values.global.docker.registry  }}/{{ .Values.global.docker.orgName }}/{{ .Values.global.logrotate.image  }}:{{.Values.global.logrotate.imageTag }}"
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+            readOnlyRootFilesystem: true
+            runAsNonRoot: false
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+          env:
+            - name: KIND
+              value: deployment
+            - name: TARGET
+              value: fluentbit
+            - name: SCRIPT_DELETE_EXCEPTIONS
+              value: "{{ .Values.logrotate.properties.SCRIPT_DELETE_EXCEPTIONS }}"
+            - name: SCRIPT_DELETE_LOG_SURVIVAL
+              value: "{{ .Values.logrotate.properties.SCRIPT_DELETE_LOG_SURVIVAL }}"
+            - name: SCRIPT_DELETE_CRONINTERVAL
+              value: "{{ .Values.logrotate.properties.SCRIPT_DELETE_CRONINTERVAL }}"
+            - name: SYSLOG_ROTATE_FILES
+              value: "{{ .Values.logrotate.properties.SYSLOG_ROTATE_FILES }}"
+            - name: SYSLOG_ROTATE_INTERVAL
+              value: "{{ .Values.logrotate.properties.SYSLOG_ROTATE_INTERVAL }}"
+            - name: SYSLOG_MAX_SIZE_OF_FILE
+              value: "{{ .Values.logrotate.properties.SYSLOG_MAX_SIZE_OF_FILE }}"
+            - name: SYSLOG_MAX_ROTATE_OF_FILE
+              value: "{{ .Values.logrotate.properties.SYSLOG_MAX_ROTATE_OF_FILE }}"
+            - name: SYSLOG_ROTATE_MODE
+              value: "{{ .Values.logrotate.properties.SYSLOG_ROTATE_MODE }}"
+            - name: SYSTEM_USER_ID
+              value: "{{ .Values.global.securityContext.user }}"
+            - name: SYSTEM_GROUD_ID
+              value: "{{ .Values.global.securityContext.fsGroup }}"
+            - name: ROTATE_NUM
+              value: "{{ .Values.logrotate.rotateNum }}"
+            - name: ROTATE_SIZE
+              value: "{{ .Values.logrotate.rotateSize }}"
+            - name: ROTATE_RETENTION
+              value: "{{ .Values.logrotate.rotateRetention }}"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 100Mi
+            limits:
+              cpu: 200m
+              memory: 200Mi
+          volumeMounts:
+            - name: log-location
+              mountPath: /deployment-logs
+            - name: tmp
+              mountPath: /tmp
+      securityContext:
+        supplementalGroups: [{{ default 1999 .Values.global.securityContext.fsGroup }}]
+        seccompProfile:
+          type: RuntimeDefault
+      {{- if or .Values.deployment.tolerations .Values.global.cluster.tolerations }}
+      tolerations:
+      {{- if .Values.deployment.tolerations }}
+      {{- toYaml .Values.deployment.tolerations | nindent 8 }}
+      {{- end }}
+      {{- if .Values.global.cluster.tolerations }}
+      {{- toYaml .Values.global.cluster.tolerations | nindent 8 }}
+      {{- end }}
+      {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: log-location
+        {{- include "helm-lib.pvcStorage" (dict "claim" "logVolumeClaim" "Release" .Release "Template" .Template "Values" .Values ) | nindent 10 }}
+{{- end }}

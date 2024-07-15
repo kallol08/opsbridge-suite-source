@@ -1,0 +1,311 @@
+# Default values for ucmdb.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+global:
+  # Required: the 'externalAccessHost' must be set to the cluster external domain name
+  externalAccessHost: ""
+  
+  # The externalAccessPort is the port on which the service is accessed from outside your cluster, default 443
+  externalAccessPort: 443
+  
+  # Use FQDN in ingress
+  setFqdnInIngress: true
+
+  # Mutual authentication https port
+  mTLS: false
+
+  # Automatically enable probe token-based authentication in server when install new UCMDB Or creating new customer.
+  autoEnableProbeTBA: true
+
+  # Enable internal Token Refresh in UCMDB for embedded internal Probe.
+  enableInternalTokenRefresh: true
+
+  # Deployment size should be demo, small, medium or large. Default demo
+  size: demo
+
+  # FIPS mode
+  enableFIPS: false
+
+  docker:
+    # set the global.docker.registry and orgName to your internal Docker registry/org
+    registry: localhost:5000
+    orgName: hpeswitom
+    imagePullPolicy: IfNotPresent
+    imagePullSecret: ""
+    
+  # Image definitions for common services
+  toolsBase:
+    image: itom-tools-base
+    imageTag: 1.2.0-0022
+  vaultInit:
+    image: kubernetes-vault-init
+    imageTag: 0.17.0-0030
+  vaultRenew:
+    image: kubernetes-vault-renew
+    imageTag: 0.17.0-0030
+    
+  ##-----------------------------------------------------------------------------------------------------------------------------------------------------------------##
+  ## Configure a customized User ID and group ID to run as. If not specified, default value of 1999 is taken.
+  ## Make sure you use the same values for the <SYSTEM_USER_ID> and <SYSTEM_GROUP_ID> settings when creating CMS NFS volumes.
+  ##-----------------------------------------------------------------------------------------------------------------------------------------------------------------##
+  securityContext:
+    user: "1999"
+    fsGroup: "1999"
+    
+  # Define persistent storage:
+  #    dataVolumeClaim is a persistent volume claim (PVC) for storing data files.
+  #    logVolumeClaim is a PVC for storing log files.
+  #
+  #  If "persistence.enabled" is false, and "isDemo" is set to true, then temporary ephemeral
+  #    storage will be created.  Otherwise, the chart will fail to deploy because you must
+  #    "opt in" to temporary storage.
+  isDemo: false
+  isSaaS: false
+  persistence:
+    enabled: false
+    dataVolumeClaim:
+    logVolumeClaim:
+  rbac:
+    serviceAccountCreate: true
+    roleCreate: true
+  nodeSelector: {}
+
+  # idm service
+  idm:
+    #Indicate CMS is going to connect to an IDM inside deployment or not, default true to connect to internal IDM. If false, IDM won't be deployed within CMS.
+    internal: true
+    # idm external url
+    idmAuthUrl: https://{{ .Values.global.externalAccessHost }}:{{ .Values.global.externalAccessPort }}/idm-service
+    # idm service url
+    idmServiceUrl: https://itom-idm-svc:18443/idm-service
+    idmTransportUser: transport_admin
+    # Vault secret key that holds idm transport admin password
+    idmTransportPasswordKey: idm_transport_admin_password
+    # idm integration admin
+    idmIntegrationAdmin: integration_admin
+    # Vault secret key that holds idm integration admin password
+    idmIntegrationAdminPasswordKey: idm_integration_admin_password
+    # Idm tenant name
+    tenant: Provider
+    # Provide the secret name that holds the HPSSO init string - default: HPSSO_INIT_STRING_KEY
+    hpssoInitStrSecretName:
+    # Vault secret key that holds idm audit integration password
+    auditIntegrationUserPasswordKey: idm_audit_integration_password
+    # Enable IDM Organization awareness of authorization feature. Once set to true, it cannot be set back to false.
+    orgAware: false
+
+  database:
+    # true means embedded database, false means external database. If internal is set to true, only postgresql is supported
+    internal: true
+    # true means containers should create database themselves, and user provided must have permissions to create DB. Only postgresql supports createDb=true
+    createDb: true
+    admin: postgres
+    adminPasswordKey: ITOM_DB_PASSWD_KEY
+    # DB host
+    # default is the hostname of the Postgres chart service, and assumes that the Postgres chart is also deployed with the UCMDB Server chart in the same namespace
+    host: "itom-postgresql"
+    # DB port, default 5432
+    port: 5432
+    # db engine type: postgresql, oracle. Default postgresql
+    type: postgresql
+    # oracle
+    # oracle database connection string
+    oracleConnectionString:
+    # oracle database service name
+    oracleServiceName:
+    # oracle database sid
+    oracleSid:
+    # Oracle default tablespace
+    oracleDefaultTablespace: USERS
+    # Oracle temporary tablespace
+    oracleTemporaryTablespace: TEMP
+    # DB SSL enabled or not(FIPS mode will force SSL enabled)
+    tlsEnabled: false
+    # name of config map with CA certificates. 
+    tlsTruststore: default-ca-certificate
+    # database user, default postgres
+    user: postgres
+    # Vault secret key that holds the database user password
+    userPasswordKey: ITOM_DB_PASSWD_KEY
+  cms:
+    # The timezone of the cluster, default Universal Time Coordinated
+    timeZone: UTC
+
+    # Open UCMDB debug port, default false
+    debug: false
+    
+    # Enable ECC Cipher, default true
+    enableEcc: true
+
+    integrationUsername:
+
+    # Vault secret keys used in services
+    secrets:
+      admin: ucmdb_admin_password
+      sysadmin: ucmdb_sysadmin_password
+      UISysadmin: ucmdb_uisysadmin_password
+      integration: ucmdb_integration_user_password
+
+    # The max number of file generated/keep by JVM Out Of Memory in the runtime/log/MY_POD_NAME
+    jvmMaxHprof: 5
+
+  kafka:
+    # true means Kafka Integration is enabled, false means Kafka Integration is disabled.
+    enabled: false
+    # Kafka hostname. Default is localhost
+    kafkaHost: localhost
+    # Kafka port
+    kafkaPort: 9092
+    # sslUcmdbKafkaKeyStore represent the location of the key store file.
+    # this is optional for client and can be used for two-way authentication for client.
+    sslUcmdbKafkaKeyStore: "/var/run/secrets/boostport.com/keystore.jks"
+    # sslUcmdbKafkaTrustStore represent the location of the trust store file.
+    sslUcmdbKafkaTrustStore: "/var/run/secrets/boostport.com/cacerts"
+    # retries represent configuration that controls the maximum amount of time the client will wait
+    # for the response of a request.
+    retries: 100
+    # retryBackOffMs represent the base amount of time to wait before attempting to reconnect to a given host.
+    # this avoids repeatedly connecting to a host in a tight loop.
+    # this backoff applies to all connection attempts by the client to a broker.
+    retryBackOffMs: 10
+    # enableNotifications represent if the ucmdb notifications system is enabled or disabled.
+    enableNotifications: true
+    # enableSubscription represent if the ucmdb subscription system is enabled or disabled.
+    enableSubscription: false
+    # represent the default keystore pass used for integration
+    keystorePass: "hppass"
+    # certificate represent the location of the server certificate file.
+    kafkaCertificate: "/var/run/secrets/boostport.com/server.crt"
+    # privateKey represent the location of the server privateKey file.
+    kafkaPrivateKey: "/var/run/secrets/boostport.com/server.key"
+  sharedComponentDetails:
+    # Return kafka serviceName and port
+    # To be used both for DCA
+    # And in ucmdb-server chart to provide as param to the waitFor init container of the components that depend on kafka
+    kafka:
+      # Kafka port
+      port:
+      # Kafka serviceName.
+      serviceName:
+# UCMDB Server image definition
+server:
+  image: itom-cmdb-server
+  imageTag: 11.8.2.255
+  
+nameOverride: ""
+fullnameOverride: ""
+workLoad: "ExtraHigh"
+deployment:
+  # Solr URL used by UCMDB Server
+  solrUrl: ""
+  # Autopass URL used by UCMDB Server
+  aplmsDomainName: "https://itom-autopass-lms:5814"
+  secrets:
+    masterKey: ucmdb_master_key
+    firstKey: ucmdb_first_key
+  database:
+    # true means containers should create database themselves, and user provided must have permissions to create DB. Only postgresql supports createDb=true
+    # createDb: true
+    # DB user name, default ucmdb
+    user: ucmdb
+    # DB name, default ucmdb
+    dbName: ucmdb
+    # postgres schema name, default ucmdb
+    schema: ucmdb
+    # PG SSL mode(PG verify-ca|verify-full[default];ignored when dbSSL is false)
+    pgTlsMode: verify-full
+    # PG client certificate full validation, ignored when FIPS is disabled
+    pgSSLFullValidation: false
+    # DB Certificate revocation list, ignored when FIPS is disabled
+    sslCRL:
+  # Upgrade content pack when binary upgrade, default false
+  upgradeCp: false
+  # Multi tenant, default false
+  multiTenant: false
+  # Change log folder name to UCMDB Server pod name, default false
+  enableHaLogOutputChange: true
+  # Checks if the password policy is enabled
+  defaultUserPasswordPolicyEnabled: true
+  # A Comma separated list of Bundle Names that will be automatically attached to new Views
+  mamGuiDefaultBundles:
+  # if ucmdb is treated as running as embedded
+  embeddedMode: false
+  # enable IDM in CMS
+  idmEnabled: true
+  # Is LW-SSO enabled for UI
+  lwssoEnabled: false
+  # #Define where to store sensitive data: vault|k8s. k8s means using secret, vault means using vault
+  secretStorage: ""
+  #If using secret, define the secret name to get sensitive data
+  secretStorageName: ""
+  # role based service account name
+  rbac:
+    serviceAccount:
+  log: {}
+  # enable nested class in CMS
+  nestedClassEnabled: true
+  # enable Java NMT
+  javaNMTEnabled: true
+  # enable jemalloc
+  jemallocEnabled: true
+  # enable jemalloc leak profiling
+  jemallocLeakProfEnabled: false
+ingress:
+  enabled: true
+  cookieName: CMSROUTE
+  secureBackends: true
+  proxyBodySize: 1024m
+  proxyTimeout: 3600
+  data:
+    - name: ucmdb-service
+      annotations: {}
+      tls:
+        - hosts: ["{{ .Values.global.externalAccessHost }}"]
+          secretName: "{{ .Values.global.secretName | default \"nginx-default-secret\" | quote }}"
+      hosts:
+        - host: "{{ .Values.global.setFqdnInIngress | ternary .Values.global.externalAccessHost \"\" }}"
+          serviceName: "{{ .namePrefix }}-ucmdb-svc"
+          servicePort: 8443
+          paths: ["/ucmdb-ui", "/ping", "/ucmdb-api", "/cp-docs", "/ucmdb-docs", "/axis2", "/ucmdb-client", "/status"]
+    - name: ucmdb-api
+      annotations: {
+        "{{ include \"ucmdb.ingress.annotationPrefix\" . }}/rewrite-target": "/rest-api/$2"
+      }
+      tls:
+        - hosts: ["{{ .Values.global.externalAccessHost }}"]
+          secretName: "{{ .Values.global.secretName | default \"nginx-default-secret\" | quote }}"
+      hosts:
+        - host: "{{ .Values.global.setFqdnInIngress | ternary .Values.global.externalAccessHost \"\" }}"
+          serviceName: "{{ .namePrefix }}-ucmdb-svc"
+          servicePort: 8443
+          paths: ["/ucmdb-server/rest-api(/|$)(.*)"]
+    - name: ucmdb-writer-service
+      annotations: {}
+      tls:
+        - hosts: ["{{ .Values.global.externalAccessHost }}"]
+          secretName: "{{ .Values.global.secretName | default \"nginx-default-secret\" | quote }}"
+      hosts:
+        - host: "{{ .Values.global.setFqdnInIngress | ternary .Values.global.externalAccessHost \"\" }}"
+          serviceName: "{{ .namePrefix }}-ucmdb-writersvc"
+          servicePort: 8443
+          paths: ["/jmx-console", "/uploadfiles", "/metrics"]
+        - host: "{{ ternary \"itom-ucmdb-writer-service-ingress\" (ternary .Values.global.externalAccessHost \"\" .Values.global.setFqdnInIngress) .Values.global.mTLS }}"
+          serviceName: "{{ .namePrefix }}-ucmdb-writersvc"
+          servicePort: "{{ .Values.global.mTLS | ternary 8444 8443 }}"
+          paths: ["/mam-collectors", "/cm"]
+
+resources: {}
+  # We usually recommend not to specify default resources and to leave this as a conscious
+  # choice for the user. This also increases chances charts run on environments with little
+  # resources, such as Minikube. If you do want to specify resources, uncomment the following
+  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
+  # limits:
+  #   cpu: 100m
+  #   memory: 128Mi
+  # requests:
+  #   cpu: 100m
+  #   memory: 128Mi
+
+tolerations: []
+

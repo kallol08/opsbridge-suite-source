@@ -1,0 +1,91 @@
+# Copyright 2023 Open Text.
+global:
+  fluentbit:
+    fluentbitSelector:
+      labelName: "deployment.microfocus.com/fluentbit-config"
+      labelValue: "true"
+  services:
+    opticDataLake: {}
+
+  docker:
+    # set the global.docker.registry and orgName to your internal Docker registry/org
+    registry: localhost:5000
+    orgName: hpeswitom 
+    imagePullSecret: ""
+    imagePullPolicy: IfNotPresent
+
+  ## if true ingress rule will be set - http: externalAccessHost, otherwise - http:
+  setFqdnInIngress: true
+
+  cluster:
+    ## classic: cdf cdf-aws cdf-azure,  BYOK: aws azure gcp generic openshift
+    k8sProvider:
+
+  # User ID and group ID to run as
+  securityContext:
+    user: "808"
+    fsGroup: "800"
+
+  # persistence.enabled=true means that the PVCs are expected to be dynamically created by the composition chart.
+  # Otherwise, persistence.dataVolumeClaim is a persistent volume claim for storing data files.
+  # persistence.logVolumeClaim is a persistent volume claim for storing log files.
+  # If all of the above are undefined, then temporary ephemeral storage will be created (only if isDemo=true)
+  persistence:
+    enabled:
+    dataVolumeClaim:
+    logVolumeClaim:
+
+  # global image definitions
+  vaultRenew:
+    image: kubernetes-vault-renew
+    imageTag: 0.18.0-0013
+  vaultInit:
+    image: kubernetes-vault-init
+    imageTag: 0.18.0-0013
+  toolsBase:
+    image: itom-tools-base
+    imageTag: 1.3.0-0011
+
+  rbac:
+    # Specifies whether a ServiceAccount should be created
+    serviceAccountCreate:
+
+  nginx:
+    annotationPrefix:
+    
+  # Set the tls min version and cipher list
+  tls:
+    tlsMinVersion: "TLSv1.2"
+    tlsCiphers: [ "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384","TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384","TLS_DHE_RSA_WITH_AES_256_GCM_SHA384","TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256","TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256","TLS_DHE_RSA_WITH_AES_128_GCM_SHA256","TLS_AES_128_GCM_SHA256","TLS_AES_256_GCM_SHA384","TLS_CHACHA20_POLY1305_SHA256" ]
+  # These values take precedence over the ones under the deployment section
+   
+deployment:
+  replicas: 1
+
+  rbac:
+    serviceAccountName:
+
+  idm:
+    namePrefix: "itom-"
+    service: idm-svc
+    port: 18443
+ 
+resources:
+  limits:
+    cpu: "2"
+    memory: "2048Mi"
+  requests:
+    cpu: "100m"
+    memory: "512Mi"
+
+enableStdOutInFluentBit: false
+#####################
+# Image definitions
+#####################
+pgBackup:
+  image: itom-pg-backup
+  imageTag: 12.3.25
+
+labels: {}
+
+nodeSelector: {}

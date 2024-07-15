@@ -1,0 +1,144 @@
+{{/*# Copyright 2023 Open Text.*/}}
+
+{{/*# The only warranties for products and services of Open Text and its affiliates*/}}
+{{/*# and licensors ("Open Text") are as may be set forth in the express warranty*/}}
+{{/*# statements accompanying such products and services. Nothing herein should be*/}}
+{{/*# construed as constituting an additional warranty. Open Text shall not be*/}}
+{{/*# liable for technical or editorial errors or omissions contained herein. The*/}}
+{{/*# information contained herein is subject to change without notice.*/}}
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    deployment.microfocus.com/default-replica-count: "1"
+    deployment.microfocus.com/runlevel: UP
+  name: itom-monitoring-collection-manager
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: itom-monitoring-collection-manager-app
+spec:
+  replicas: {{ .Values.collectionmanager.config.replicaCount }}
+  selector:
+    matchLabels:
+      app: itom-monitoring-collection-manager-app
+  template:
+    metadata:
+      labels:
+        app: itom-monitoring-collection-manager-app
+        app.kubernetes.io/name: itom-monitoring-collection-manager
+        app.kubernetes.io/managed-by: {{ .Release.Name }}
+        app.kubernetes.io/version: {{ .Values.collectionmanager.imageTag }}
+        itom.microfocus.com/capability: HyperscaleObservability
+        tier.itom.microfocus.com/backend: backend
+        itom.microfocus.com/description: Collection_manager_forwards_collection_request
+      annotations:
+        {{- if .Values.global.vaultAppRole }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-{{ .Values.global.vaultAppRole }}
+        {{- else }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-default
+        {{- end }}
+        pod.boostport.com/vault-init-container: install
+
+        prometheus.io/port: '8080'
+        prometheus.io/scrape: 'true'
+    spec:
+      serviceAccountName: {{ .Values.deployment.rbac.serviceAccount }}    
+      securityContext:
+        runAsUser: {{ .Values.global.securityContext.user }}
+        fsGroup: {{ .Values.global.securityContext.fsGroup }}
+      initContainers:
+        {{- include "helm-lib.waitFor" ( dict "service" "cs-redis" "port" "6380" "Values" .Values) | nindent 8 }}
+        {{- $certNames := printf "Common_Name:itom-monitoring-collection-manager,Additional_SAN:itom-monitoring-collection-manager/itom-monitoring-collection-manager.%s/itom-monitoring-collection-manager.%s.svc.cluster.local/itom-monitoring-collection-manager/itom-monitoring-collection-manager-svc/itom-monitoring-collection-manager-svc.%s/itom-monitoring-collection-manager-svc.%s.svc.cluster.local,Secret:itom-monitoring-collection-manager-metrics-client,UpdateSecret:true,File_Name:server" .Release.Namespace .Release.Namespace .Release.Namespace .Release.Namespace -}}
+        {{- include "helm-lib.containers.vaultInit" (dict "containerName" "install" "certNames" $certNames "Values" .Values) | nindent 8 }}
+      containers:
+        {{- include "helm-lib.containers.vaultRenew" (dict "containerName" "kubernetes-vault-renew" "Values" .Values) | nindent 8 }}
+        - name: itom-monitoring-collection-manager
+          image: {{ .Values.global.docker.registry }}/{{ .Values.global.docker.orgName }}/{{ .Values.collectionmanager.image }}:{{ .Values.collectionmanager.imageTag }}
+          imagePullPolicy: {{ .Values.global.docker.imagePullPolicy }}
+          livenessProbe:
+            httpGet:
+              path: /v1/collection/health
+              port: 40006
+              scheme: HTTPS
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /v1/collection/health
+              port: 40006
+              scheme: HTTPS
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:    
+            limits:
+              cpu: 2
+              memory: 477Mi
+            requests:
+              cpu: 100m
+              memory: 200Mi
+          volumeMounts:
+            - name: vault-token
+              mountPath: /var/run/secrets/boostport.com
+            - name: collection-manager-log-volume
+              mountPath: /logs
+              subPath: cloud-monitoring/collection-manager
+
+          env:
+            - name: "PROMETHEUS_METRICS_PORT"
+              value: "8080"
+            - name: "ENABLE_REDIS_NOTIFY_KEYSPACE_EVENTS"
+              value: "true"              
+            - name: "CDF_NAMESPACE"
+              value: {{ .Release.Namespace | quote }}
+            {{- if .Values.global.vaultAppRole }}
+            - name: "VAULT_ROLE_ID"
+              value: {{ .Values.global.vaultRoleId | quote }}
+            - name: "VAULT_APP_ROLE"
+              value: {{ .Values.global.vaultAppRole | quote }}
+            {{- end }}
+            - name: "REDIS_URL"
+              value: {{ .Values.redis.svcname }}:{{ .Values.redis.port }}
+            - name: "REDIS_SRV_BASE_NAME"
+              value: {{ .Values.redis.srvbasename }}
+            - name: "REDIS_PWD_KEY"
+              value: {{ .Values.redis.passwdkey }} 
+            - name: "SCHEDULER_URL"
+              value: {{.Values.collectionmanager.config.schedulerUrl}}
+            - name: "CM_LOG_FILE"
+              value: "collection_manager.log"
+            - name: "VAULT_SECRET_DIR"
+              value: /var/run/secrets/boostport.com
+            - name: "CO_GID"
+              value: {{ .Values.global.securityContext.fsGroup | quote }}
+            - name: "CO_UID"
+              value: {{ .Values.global.securityContext.user | quote }}
+            - name: MY_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: MY_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: MY_POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: MY_POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: MY_CONTAINER_NAME
+              value: itom-monitoring-collection-manager
+
+      {{- with (coalesce .Values.nodeSelector .Values.global.nodeSelector) }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+      - name: vault-token
+        emptyDir:
+          medium: "Memory"
+      - name: collection-manager-log-volume
+        {{- include "helm-lib.pvcStorage" (dict "claim" "logVolumeClaim" "Release" .Release "Template" .Template "Values" .Values ) | nindent 8 }}

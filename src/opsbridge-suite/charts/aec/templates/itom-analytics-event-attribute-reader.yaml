@@ -1,0 +1,134 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    deployment.microfocus.com/default-replica-count: "{{ .Values.replicaCount}}"
+    deployment.microfocus.com/runlevel: UP
+    reloader.stakater.com/auto: "true"
+  name: itom-analytics-event-attribute-reader
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- template "aec.defaultLabels" (dict "NameSuffix" "event-attribute-reader" "Version" .Values.aecImages.eventReader.imageTag "Component" "aec-event-attribute-reader" "HelmRelease" .Release.Name "Chart" .Chart) }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: itom-analytics-event-attribute-reader
+  template:
+    metadata:
+      labels:
+        app: itom-analytics-event-attribute-reader
+        itom.microfocus.com/capability: aiops
+      annotations:
+        {{- if .Values.global.vaultAppRole }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-{{ .Values.global.vaultAppRole }}
+        {{- else }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-default
+        {{- end }}
+        pod.boostport.com/vault-init-container: install
+    spec:
+      serviceAccountName: {{ .Values.deployment.rbac.serviceAccount }}
+      securityContext:
+        runAsUser: {{ .Values.global.securityContext.user }}
+        runAsGroup: {{ .Values.global.securityContext.fsGroup }}
+        fsGroup: {{ .Values.global.securityContext.fsGroup }}
+        runAsNonRoot: true
+      initContainers:
+      {{- include "helm-lib.containers.vaultInit" (dict "certNames" (printf "itom-analytics-event-attribute-reader-service.%s.svc" .Release.Namespace) "Values" .Values) | nindent 6 }}
+
+      {{ include "aec.cacertBundler" . | nindent 6 }}
+
+      containers:
+{{/*      ## obmsetup container offers a rest service to configure new obm instances*/}}
+      - name: itom-analytics-event-attribute-reader
+        image: {{ coalesce .Values.aecImages.eventReader.dockerRegistry .Values.docker.registry .Values.global.docker.registry -}}
+        / {{- coalesce .Values.aecImages.eventReader.orgName .Values.docker.orgName .Values.global.docker.orgName -}}
+        / {{- .Values.aecImages.eventReader.image -}}
+        : {{- .Values.aecImages.eventReader.imageTag }}
+        imagePullPolicy: {{ .Values.global.docker.imagePullPolicy }}
+        resources:
+        {{- if eq .Values.global.deployment.size "evaluation" }}
+          requests:
+            memory: "300Mi"
+            cpu: "10m"
+          limits:
+            memory: "500Mi"
+            cpu: "100m"
+        {{- else }}
+          requests:
+            memory: "300Mi"
+            cpu: "10m"
+          limits:
+            memory: "500Mi"
+            cpu: "0.5"
+        {{- end }}
+        securityContext:
+          allowPrivilegeEscalation: false
+        env:
+        - name: "GODEBUG"
+          value: "x509ignoreCN=0"
+        - name: "EVENT_TOPIC"
+          valueFrom:
+            configMapKeyRef:
+              name: itom-analytics-config
+              key: dataset-names.events
+        - name: EVENT_TOPIC_FLEX
+          value: "{{ .Values.global.oprEventFlex }}"
+        - name: "DATASOURCE_REGISTRY_URL"
+          value: "https://itom-analytics-datasource-registry-svc:8443"
+        - name: "CONFIG_SERVICE_URL"
+          value: "https://itom-analytics-ea-config-svc:8443"
+        - name: "PULSAR_BROKER"
+          value: {{ include "helm-lib.getDiPulsarProxyHost" . | default "itomdipulsar-proxy" }}
+        - name: "PULSAR_PORT"
+          value: {{ include "helm-lib.getDiPulsarProxyClientPort" . | default "6651" | quote }}
+        - name: "DI_URL"
+          value: https://{{ include "helm-lib.getDiAdminHost" . | default "itom-di-administration-svc" }}:{{ include "helm-lib.getDiAdminPort" . | default "18443" }}
+        - name: "DATASOURCE_REGISTRY_POLLING_DELAY_S"
+          value: "10"
+        - name: "USE_TLS_FOR_PULSAR"
+          value: "true"
+        - name: "TLS_KEY_FILE"
+          valueFrom:
+            configMapKeyRef:
+              name: itom-analytics-config
+              key: tls.key-file
+        - name: "TLS_CERT_FILE"
+          valueFrom:
+            configMapKeyRef:
+              name: itom-analytics-config
+              key: tls.cert-file
+        {{ include "aec.setExternalPulsarCertEnv" . | indent 8 }}
+        - name: "CA_CERT_FILE"
+          value: {{ .Values.cacerts.folder }}/{{ .Values.cacerts.file }}
+        - name: "SUITE_NAMESPACE"
+          value: {{ .Release.Namespace }}
+        - name: "SUITE_EXTERNAL_NAME"
+          value: {{ .Values.global.externalAccessHost }}
+        - name: "LOG_LEVEL"
+          value: "info"
+        volumeMounts:
+        - name: {{ .Values.cacerts.volumeName }}
+          mountPath: {{ .Values.cacerts.folder }}
+        - name: vault-token
+          mountPath: /var/run/secrets/boostport.com
+        {{ include "aec.useExternalPulsarCertVolume" . | indent 8 }}
+
+      {{- include "helm-lib.containers.vaultRenew" (dict "Values" .Values) | nindent 6 }}
+
+      {{- with ( coalesce .Values.nodeSelector .Values.global.nodeSelector ) }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+      {{- if (hasKey .Values.global "tlsTruststore") }}
+      - name: {{ .Values.externalCerts.volumeName }}
+        configMap:
+          name: {{ .Values.global.tlsTruststore }}
+          optional: true
+      {{- end }}
+      - name: {{ .Values.cacerts.volumeName }}
+        emptyDir: {}
+      - name: vault-token
+        emptyDir: {}
+      {{ include "aec.defineExternalPulsarCertVolume" . | indent 6 }}

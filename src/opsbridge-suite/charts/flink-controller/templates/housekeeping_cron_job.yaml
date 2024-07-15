@@ -1,0 +1,81 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: itom-analytics-flink-housekeeping-job
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- template "flink-controller.defaultLabels" (dict "NameSuffix" "flink-housekeeping-job" "Version" .Values.images.controller.tag "Component" "flink-controller-housekeeping" "HelmRelease" .Release.Name "Chart" .Chart) }}
+spec:
+  suspend: true
+  schedule: "0 0 * * *"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 300
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          serviceAccountName: {{ .Values.deployment.rbac.serviceAccount }}
+          securityContext:
+            runAsUser: {{ .Values.global.securityContext.user }}
+            runAsGroup: {{ .Values.global.securityContext.fsGroup }}
+            fsGroup: {{ .Values.global.securityContext.fsGroup }}
+            runAsNonRoot: true
+          containers:
+          - name: job
+            image: {{ coalesce .Values.images.controller.dockerRegistry .Values.docker.registry .Values.global.docker.registry -}}
+            / {{- coalesce .Values.images.controller.orgName .Values.docker.orgName .Values.global.docker.orgName -}}
+            / {{- .Values.images.controller.image -}}
+            : {{- .Values.images.controller.tag }}
+            imagePullPolicy: {{ .Values.global.docker.imagePullPolicy }}
+            env:
+            - name: HELM_HOOK
+              value: cron
+            - name: HOOK_JOB_NAME
+              value: itom-analytics-flink-controller-pre-upgrade-hook
+            - name: SERVICE_RESERVED
+              value: "134217728" {{- /* 128 MiB */}}
+            - name: LOG_FILE
+              value: flink_housekeeping.log
+            - name: SERVER_KEYSTORE
+              value: ignored
+            - name: KEYSTORE_PASSWORD
+              value: unused
+            - name: SERVER_KEY_ALIAS
+              value: omitted
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "0.1"
+              limits:
+                memory: "256Mi"
+                cpu: "0.2"
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+            volumeMounts:
+            - name: vault-token
+              mountPath: /var/run/secrets/boostport.com
+            - name: tmp-storage
+              mountPath: /tmp
+            - name: conf-storage
+              mountPath: /service/conf
+              subPath: itom-analytics/flink-controller
+            - name: log-storage
+              mountPath: /service/log
+              subPath: itom-analytics/flink-controller
+          {{- with ( coalesce .Values.nodeSelector .Values.global.nodeSelector ) }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumes:
+          - name: vault-token
+            emptyDir:
+              medium: Memory
+          - name: tmp-storage
+            emptyDir:
+              medium: Memory
+          - name: conf-storage
+            {{- include "helm-lib.pvcStorage" (dict "claim" "configVolumeClaim" "Release" .Release "Template" .Template "Values" .Values) | nindent 12 }}
+          - name: log-storage
+            {{- include "helm-lib.pvcStorage" (dict "claim" "logVolumeClaim" "Release" .Release "Template" .Template "Values" .Values) | nindent 12 }}

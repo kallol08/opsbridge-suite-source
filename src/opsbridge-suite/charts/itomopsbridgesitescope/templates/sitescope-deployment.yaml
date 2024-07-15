@@ -1,0 +1,147 @@
+{{- if (((.Values.global).agentlessMonitoring).enableSitescope) }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    deployment.microfocus.com/default-replica-count: "1"
+    deployment.microfocus.com/runlevel: UP
+  name: itom-monitoring-sitescope
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: itom-monitoring-sitescope-app
+spec:
+  replicas: {{ .Values.sitescope.replicaCount }}
+  selector:
+    matchLabels:
+      app: itom-monitoring-sitescope-app
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: itom-monitoring-sitescope
+        app.kubernetes.io/managed-by: {{ .Values.sitescope.managedby }}
+        app.kubernetes.io/version: {{ .Values.sitescope.imageTag }}
+        itom.microfocus.com/capability: {{ .Values.sitescope.capname }}
+        tier.itom.microfocus.com/backend: backend
+        tier.itom.microfocus.com/frontend: frontend
+        app: itom-monitoring-sitescope-app
+        service: itom-monitoring-sitescope-svc
+      annotations:
+        {{- if .Values.global.vaultAppRole }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-{{ .Values.global.vaultAppRole }}
+        {{- else }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-default
+        {{- end }}
+        pod.boostport.com/vault-init-container: install
+    spec:
+      hostname: itom-monitoring-sitescope-svc
+      securityContext:
+        runAsUser:  {{ default 1999 .Values.global.securityContext.user }}
+        runAsGroup: {{ default 1999 .Values.global.securityContext.fsGroup }}
+        fsGroup: {{ default 1999 .Values.global.securityContext.fsGroup }}
+        supplementalGroups: [{{ default 1999 .Values.global.securityContext.fsGroup }}]
+        runAsNonRoot: true
+      serviceAccountName: {{ .Values.deployment.rbac.serviceAccount }}
+      initContainers:
+        {{- include "helm-lib.waitForVault" . | nindent 8 }}
+        {{- include "helm-lib.containers.vaultInit" (dict "certNames" (printf "Common_Name:itom-monitoring-sitescope-svc,Additional_SAN:%s/itom-monitoring-sitescope-svc" .Values.global.externalAccessHost) "Values" .Values) | nindent 8 }}
+      containers:
+        {{- include "helm-lib.containers.vaultRenew" (dict "containerName" "kubernetes-vault-renew" "Values" .Values) | nindent 8 }}
+        - name: sitescope
+          image: {{ .Values.global.docker.registry }}/{{ .Values.global.docker.orgName }}/{{ .Values.sitescope.image }}:{{ .Values.sitescope.imageTag }}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8443
+              name: sitescope
+              protocol: TCP
+            - containerPort: 383
+              name: sitescope-oa
+              protocol: TCP
+            - containerPort: 30005
+              name: sitescope-dl
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 600m
+              memory: 1024Mi
+            limits:
+              cpu: 2
+              memory: 3096Mi
+          volumeMounts:
+            - name: vault-token
+              mountPath: /var/run/secrets/boostport.com
+            - name: sitescope-tmpfs-vol
+              mountPath: /mapping/TMPFS
+              subPath: TMPFS
+            - name: sitescope-tmpfs-vol
+              mountPath: /tmp
+              subPath: tmp
+            - name: sitescope-tmpfs-vol
+              mountPath: /var/tmp
+              subPath: var/tmp
+            - name: sitescope-conf-volume
+              mountPath: /mapping/PERSIST
+              subPath: sis/itom-monitoring-sitescope-svc/SiteScope
+            - name: sitescope-conf-volume
+              mountPath: /home/itom
+              subPath: sis/itom-monitoring-sitescope-svc/home/itom
+            - name: sitescope-conf-volume
+              mountPath: /var/opt/OV
+              subPath: sis/itom-monitoring-sitescope-svc/OV/var/opt/OV
+            - name: sitescope-conf-volume
+              mountPath: /opt/HP/SiteScope/discovery
+              subPath: sis/itom-monitoring-sitescope-svc/SiteScope/discovery
+            - name: sitescope-conf-volume
+              mountPath: /opt/HP/SiteScope/cache
+              subPath: sis/itom-monitoring-sitescope-svc/SiteScope/cache
+            - name: sitescope-conf-volume
+              mountPath: /opt/HP/SiteScope/conf
+              subPath: sis/itom-monitoring-sitescope-svc/SiteScope/conf
+            - name: sitescope-conf-volume
+              mountPath: /opt/HP/SiteScope/bin
+              subPath: sis/itom-monitoring-sitescope-svc/SiteScope/bin
+            - name: sitescope-conf-volume
+              mountPath: /opt/HP/SiteScope/coso.json
+              subPath: sis/itom-monitoring-sitescope-svc/SiteScope/coso.json
+            - name: sitescope-conf-volume
+              mountPath: /opt/HP/SiteScope/coso.history.json
+              subPath: sis/itom-monitoring-sitescope-svc/SiteScope/coso.history.json
+            - name: sitescope-conf-volume
+              mountPath: /opt/HP/SiteScope/coso.debug.json
+              subPath: sis/itom-monitoring-sitescope-svc/SiteScope/coso.debug.json
+            - name: sitescope-conf-volume
+              mountPath: /opt/HP/SiteScope/coso.history.debug.json
+              subPath: sis/itom-monitoring-sitescope-svc/SiteScope/coso.history.debug.json
+            - name: sitescope-conf-volume
+              mountPath: /opt/HP/SiteScope/coso.quarantine.json
+              subPath: sis/itom-monitoring-sitescope-svc/SiteScope/coso.quarantine.json
+            - name: sitescope-conf-volume
+              mountPath: /opt/HP/SiteScope/coso.history.quarantine.json
+              subPath: sis/itom-monitoring-sitescope-svc/SiteScope/coso.history.quarantine.json
+          securityContext:
+            readOnlyRootFilesystem: true
+          env:
+            - name: "SVCNAME"
+              value: "itom-monitoring-sitescope-svc"
+            - name: "IDMHOST"
+              value: "itom-idm-svc:18443"
+            - name: "CO_GID"
+              value: {{ int64 .Values.global.securityContext.fsGroup | quote }}
+            - name: "CO_UID"
+              value: {{ int64 .Values.global.securityContext.user | quote }}              
+      {{- with (coalesce .Values.nodeSelector .Values.global.nodeSelector) }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+        - name: vault-token
+          emptyDir: {}   
+        - name: sitescope-tmpfs-vol
+          emptyDir: {}    
+        - name: sitescope-conf-volume
+          {{- include "helm-lib.pvcStorage" (dict "claim" "configVolumeClaim" "Release" .Release "Template" .Template "Values" .Values ) | nindent 10 }}
+{{- end }}

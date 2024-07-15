@@ -1,0 +1,151 @@
+{{/*# Copyright 2023 Open Text.*/}}
+
+{{/*# The only warranties for products and services of Open Text and its affiliates*/}}
+{{/*# and licensors ("Open Text") are as may be set forth in the express warranty*/}}
+{{/*# statements accompanying such products and services. Nothing herein should be*/}}
+{{/*# construed as constituting an additional warranty. Open Text shall not be*/}}
+{{/*# liable for technical or editorial errors or omissions contained herein. The*/}}
+{{/*# information contained herein is subject to change without notice.*/}}
+
+{{- if and (eq .Values.global.monitoringService.isStaticThresholdingEnabled false) (eq .Values.global.monitoringService.isDynamicThresholdingEnabled false) }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: itom-monitoring-threshold-cleanup-job-{{ randAlphaNum 5 | lower }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: itom-monitoring-threshold-cleanup-job
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      name: itom-monitoring-threshold-cleanup-job
+      labels:
+        app.kubernetes.io/name: itom-monitoring-threshold-cleanup-job
+        app.kubernetes.io/managed-by: {{ .Release.Namespace }}
+        app.kubernetes.io/version: {{ .Values.thpcln.imageTag }}
+        itom.microfocus.com/capability: HyperscaleObservability
+        tier.itom.microfocus.com/backend: backend
+        tier.itom.microfocus.com/frontend: frontend
+        app: itom-monitoring-threshold-cleanup-job
+      annotations:
+        {{- if .Values.global.vaultAppRole }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-{{ .Values.global.vaultAppRole }}
+        {{- else }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-default
+        {{- end }}
+        pod.boostport.com/vault-init-container: install
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ .Values.deployment.rbac.serviceAccount }}
+      securityContext:
+        runAsUser: {{ .Values.global.securityContext.user }}
+        fsGroup: {{ .Values.global.securityContext.fsGroup }}
+      initContainers:
+      {{- include "helm-lib.containers.vaultInit" (dict "containerName" "install" "certNames" (printf "Common_Name:itom-opsb-threshold-cleanup-job,Additional_SAN:itom-opsb-threshold-cleanup-job,File_Name:server;Realm:RID,Common_Name:itom-opsb-threshold-cleanup-job,Additional_SAN:itom-opsb-threshold-cleanup-job,File_Name:server") "Values" .Values) | nindent 6 }}
+      containers:
+      - name: itom-monitoring-threshold-cleanup-job
+        image: {{ .Values.global.docker.registry }}/{{ .Values.global.docker.orgName }}/{{ .Values.thpcln.image }}:{{ .Values.thpcln.imageTag }}
+        imagePullPolicy: {{ .Values.global.docker.imagePullPolicy }}
+        resources:
+          requests:
+            cpu: {{ .Values.thpcln.resources.requests.cpu }}
+            memory: {{ .Values.thpcln.resources.requests.memory }}
+          limits:
+            cpu: {{ .Values.thpcln.resources.limits.cpu }}
+            memory: {{ .Values.thpcln.resources.limits.memory }}
+        volumeMounts:
+          - name: vault-token
+            mountPath: /var/run/secrets/boostport.com
+          - name: itom-monitoring-threshold-cleanup-log-job
+            mountPath: /logs
+            subPath: cloud-monitoring/event-forwarder
+          - name: itom-monitoring-threshold-cleanup-config-job
+            mountPath: /configs
+            subPath: itom-monitoring-threshold-processor
+          - name: certs-volume 
+            mountPath: /certs/ssl/ca
+          {{- if (((((.Values.global).di).pulsar).client).tenantAdminSecret) }}
+          - name: pulsar-client-cert-secret-volume
+            mountPath: /thp/ssl/external-ca-signed-cert/pulsar-client
+          {{- end }}
+        securityContext:
+          allowPrivilegeEscalation: false
+        env:
+        - name: "NAMESPACE"
+          value: {{ .Release.Namespace | quote }}
+        - name: "APPROLE"
+          value: "suite"
+        - name: "ROLE_ID"
+          value: {{ .Values.global.vaultRoleId | quote }}
+        - name: "VAULT_ADDR"
+          value:  {{ .Values.global.vaultAddr | quote }}
+        - name: POD_NAME
+          valueFrom:
+           fieldRef:
+            fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+           fieldRef:
+            fieldPath: metadata.namespace
+        - name: NODE_NAME
+          valueFrom:
+           fieldRef:
+            fieldPath: spec.nodeName
+        - name: CONTAINER_NAME
+          value: itom-monitoring-threshold-cleanup-job
+        - name: "EXTERNAL_ACCESS_HOST"
+          value:  {{ .Values.global.externalAccessHost | quote }}
+        - name: "EXTERNAL_ACCESS_PORT"
+          value:  {{ .Values.global.externalAccessPort | quote }}
+        - name: "VAULT_SECRET_DIR"
+          value: /var/run/secrets/boostport.com
+        - name: ENABLE_STATIC_THRESHOLDING
+          value: {{ .Values.global.monitoringService.isStaticThresholdingEnabled | default "true" | quote}}
+        - name: ENABLE_DYNAMIC_THRESHOLDING
+          value: {{ .Values.global.monitoringService.isDynamicThresholdingEnabled | default "true" | quote}}
+        - name: PULSAR_EP
+          value: {{ include "helm-lib.getDiPulsarProxyHost" . | default "itomdipulsar-proxy" | quote }}
+        - name: PULSAR_WEB_PORT
+          value: {{ include "helm-lib.getDiPulsarProxyWebPort" . | default "8443" | quote }}
+        - name: PULSAR_CLIENT_PORT
+          value: {{ include "helm-lib.getDiPulsarProxyClientPort" . | default "6651" | quote }}
+        - name: PULSAR_PROTOCOL
+          value: "pulsar+ssl"
+        - name: PULSAR_TOPIC_TENANT
+          value: {{ .Values.global.di.pulsar.tenant | default "public" | quote }}
+        - name: PULSAR_TOPIC_NAMESPACE
+          value: {{ .Values.global.di.pulsar.namespace | default "default" | quote }}
+        {{- if (((((.Values.global).di).pulsar).client).tenantAdminSecret) }}
+        - name: PULSAR_CLIENT_CRT
+          value: /thp/ssl/external-ca-signed-cert/pulsar-client/pulsarCert.crt
+        - name: PULSAR_CLIENT_KEY
+          value: /thp/ssl/external-ca-signed-cert/pulsar-client/pulsarCert.key
+        - name: PULSAR_CLIENT_CA_CERT
+          value: /certs/ssl/ca/pulsar-ca.crt              
+        {{- end }}
+      {{- with (coalesce .Values.nodeSelector .Values.global.nodeSelector) }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+      - name: vault-token
+        emptyDir: {}
+      - name: itom-monitoring-threshold-cleanup-log-job
+        {{- include "helm-lib.pvcStorage" (dict "claim" "logVolumeClaim" "Release" .Release "Template" .Template "Values" .Values ) | nindent 8 }}
+      - name: itom-monitoring-threshold-cleanup-config-job
+        {{- include "helm-lib.pvcStorage" (dict "claim" "configVolumeClaim" "Release" .Release "Template" .Template "Values" .Values ) | nindent 8 }}
+      - name: certs-volume
+        projected:
+          defaultMode: 420
+          sources:
+          - configMap:
+              name: opsb-ca-certificate
+      {{- if (((((.Values.global).di).pulsar).client).tenantAdminSecret) }}
+      - name: pulsar-client-cert-secret-volume
+        projected:
+          sources:
+          - secret:
+              name: {{ .Values.global.di.pulsar.client.tenantAdminSecret | quote }}
+      {{- end }}
+{{- end }}

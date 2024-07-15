@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.itomopsbridgeapmsyncservice.capname }}-cm
+  labels:
+    app.kubernetes.io/name: {{ .Values.itomopsbridgeapmsyncservice.capname }}-cm
+    app.kubernetes.io/managed-by: {{ .Values.itomopsbridgeapmsyncservice.managedby }}
+    app.kubernetes.io/version: {{ .Values.itomopsbridgeapmsyncservice.imageTag }}
+    itom.microfocus.com/capability: {{ .Values.itomopsbridgeapmsyncservice.capname }}
+    tier.itom.microfocus.com/backend: backend
+data:
+  env.json: |
+    {
+    "CollectorURL": {{ .Values.apm.svcname  | quote }},
+    "CollectorName": {{ .Values.apm.config.apmname  | quote}},
+    "DataType": {{ .Values.apm.config.discoverydatatype  | quote}},
+    "CollectionType": {{ .Values.apm.config.discoveryapmtype  | quote}},
+    "JobType": {{ .Values.apm.config.discoveryjobtype  | quote}},
+    "MultiDataType": {{ .Values.apm.config.multidiscoverydatatype  | quote}},
+    "MultiCollectionType": {{ .Values.apm.config.multidiscoveryapmtype  | quote}},
+    "MultiJobType": {{ .Values.apm.config.multidiscoveryjobtype  | quote}}
+    }
+
+  {{- if .Values.global.vaultAppRole }}
+  application.approle: {{ .Values.global.vaultAppRole }}
+  application.approleid: {{ required "Required value not defined: global.vaultRoleId" .Values.global.vaultRoleId }}
+  {{- end }}
+
+  suite.vault_addr: {{ default "https://itom-idm-svc:8200" .Values.global.vault.address | quote }}
+  suite.idm_integration_user: {{ default "integration_admin" .Values.global.idm.integrationUser | quote }}
+  suite.idm_integration_user_password_key: {{ default  "idm_integration_admin_password" .Values.global.idm.integrationUserKey | quote }}
+  suite.idm_transport_user: {{ default  "transport_admin" .Values.global.idm.transportUser | quote }}
+  suite.idm_transport_key: {{ default  "idm_transport_admin_password" .Values.global.idm.transportUserKey | quote }}
+  suite.idm_organization: "Provider"
+  suite.idm_addr: "https://{{ default  "itom-idm-svc" .Values.global.idm.serviceName }}:18443"
+  application.connection.authoritycheck.enabled: {{ default "true" .Values.authoritycheck.enabled | quote }}
+  application.log.level: {{ default "INFO" .Values.log.level | quote }}
+  application.redis.host: {{ default "cs-redis" .Values.redis.host }}
+  application.redis.port: {{ default "6380" .Values.redis.port|quote }}
+  application.redis.passwdkey: {{ default "redis_pwd" .Values.redis.passwdkey|quote }}

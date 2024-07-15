@@ -1,0 +1,23 @@
+{{ if and (.Capabilities.APIVersions.Has "monitoring.coreos.com/v1") .Values.global.prometheus.deployPrometheusConfig }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  labels:
+    app: itom-monitoring-prom-metric-collector-app
+    prometheus_config: "1"
+    tier.itom.microfocus.com/backend: backend
+  name: itom-monitoring-prom-metric-collector-restarts
+  namespace: {{ .Release.Namespace }}
+spec:
+  groups:
+    - interval: 1h
+      name: itom-monitoring-prom-metric-collector.rules
+      rules:
+        - alert: promCollectorRestarts
+          annotations:
+            message: pod  has restarted
+          expr: kube_pod_container_status_restarts_total{pod=~"itom-monitoring-prom-metric-collector.*", container=~"(itom-monitoring-job-fetcher|itom-monitoring-prom-metric-collector|itom-monitoring-result-processor|kubernetes-vault-renew)", container!~"kubernetes-vault-renew", namespace=~"collection-service"}  >= 1
+          labels:
+            severity: critical
+            
+{{ end }}

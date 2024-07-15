@@ -1,0 +1,19 @@
+{{ $namePrefix := include "namePrefix" . }}
+{{- if .Values.global.prometheus.deployPrometheusConfig }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $namePrefix }}-ingress-controller-metrics-svc
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ $namePrefix }}-ingress-controller
+spec:
+  {{-  include "helm-lib.service.getIpConfig" . |nindent 2 }}
+  ports:
+  - port: 10254
+    targetPort: 10255
+    name: metrics
+    protocol: TCP
+  selector:
+  {{- include "itom-nginx-ingress-controller.selectorLabels" . | nindent 4 }}
+{{- end }}

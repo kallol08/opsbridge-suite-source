@@ -1,0 +1,101 @@
+replicaCount: 1
+
+#####################
+# Image definitions
+#####################
+internalIntegrationImages:
+  itomOmiAecIntegration:
+    image: itom-omi-aec-integration
+    imageTag: 3.8.0
+
+  itomOmiDiIntegration:
+    image: itom-omi-di-integration
+    imageTag: 3.10.0
+
+  itomOmiAecIntegrationWatcher:
+    image: itom-omi-aec-integration-watcher
+    imageTag: 3.6.0
+
+  itomOmiCSRGranter:
+    image: itom-omi-csr-granter
+    imageTag: 0.9.0
+
+  cacertBundler:
+    image: itom-cacert-bundler
+    imageTag: 1.3.0
+
+  itomDataMigrator:
+    image: itom-data-migrator
+    imageTag: 0.12.0
+
+externalCerts:
+  volumeName: "external-certs-volume"
+  path: "/external-certs"
+
+cacerts:
+  volumeName: "cacert-volume"
+  folder: "/cacerts"
+  file: "all-cacerts.crt"
+
+global:
+  services:
+    opticReporting:
+      # deploy: true
+    obm:
+      foo: bar
+    hyperscaleObservability:
+      foo: bar
+    opticDataLake:
+      externalOpticDataLake:
+        externalAccessHost:                     # External Access Host of the providing deployment
+        externalAccessPort:                     # Ingress Controller Port
+        integrationUser:                        # IDM Integration User of the providing deployment
+        integrationPasswordKey: OPTIC_DATALAKE_INTEGRATION_PASSWORD # [DO NOT CHANGE] IDM Integration User password of the providing deployment
+  di:
+    deployment: "default"
+
+  idm:
+    serviceName: itom-idm-svc
+    internalPort: 18443
+    integrationUser: integration_admin
+    integrationUserKey: idm_integration_admin_password
+  
+  internalIntegration:
+    permittedNodeNames: "itom-monitoring-service-data-broker-svc"
+    obmHttpClientTimeout: 300 
+
+  aec:
+    datasource:
+      enablereceiver: true
+
+  rbac:
+    serviceAccountCreate: true
+    roleCreate: true
+  nodeSelector: {}
+  oprEventFlex: true
+  oprEventForceFlexTableUpdate: false 
+  busybox:
+    image: itom-busybox
+    imageTag: 1.32.0-006
+
+  vaultInit:
+    image: kubernetes-vault-init
+    imageTag:
+  vaultRenew:
+    image: kubernetes-vault-renew
+    imageTag:
+  toolsBase:
+    image: itom-tools-base
+    imageTag: 1.1.0-0011
+
+deployment:
+  rbac:
+    serviceAccount: integration-sa
+
+resources:
+  limits:
+    cpu: "1"
+    memory: "600Mi"
+  requests:
+    cpu: "0.1"
+    memory: "256Mi"

@@ -1,0 +1,23 @@
+{{- $namePrefix := include "namePrefix" . -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ printf "%s-cms-gateway-svc" ($namePrefix) }}
+  labels:
+    name: {{ printf "%s-cms-gateway-svc" (.Chart.Name) }}
+    {{- include "ucmdb.labels" . | nindent 4 }}
+spec:
+  type: {{ if .Values.global.cms.debug }}NodePort{{ else }}ClusterIP{{ end }}
+  ports:
+    {{- if .Values.deployment.node.enableHttp }}
+    - name: http
+      port: {{ .Values.deployment.node.httpPort }}
+    {{- end }}
+    - name: https
+      port: {{ .Values.deployment.node.httpsPort }}
+    {{- if .Values.global.cms.debug }}
+    - name: debug
+      port: 9229
+    {{- end }}
+  selector:
+    name: {{ .Chart.Name }}

@@ -1,0 +1,158 @@
+# © 2023 Open Text
+#
+#
+#
+itomcollectionautoconfigurejob:
+  image: itom-monitoring-collection-autoconfigure-job
+  imageTag: 24.2-041
+  #FQDN for Content Management service
+  contentManagementHost: itom-opsb-content-manager-svc
+  #Port for Content Management
+  contentManagementPort: 9000
+  #FQDN for Monitoring Admin service
+  monitoringAdminHost: itom-monitoring-admin-svc
+  #Port for Monitoring Admin service
+  monitoringAdminPort: 8443
+  #FQDN of Data Administration Service. Incase of external COSO, use externally accessible hostname/FQDN
+  diadminHost: itom-di-administration-svc
+  #Data Administration ClusterIP port. Incase of external COSO, use externally accessible nodeport
+  diadminPort: 18443
+  #FQDN for IDM service
+  idmHost: itom-idm-svc
+  #Port for IDM service
+  idmPort: 18443
+  #FQDN for Data Broker service
+  dataBrokerHost: itom-monitoring-service-data-broker-svc
+  #Port for Data Broker service
+  dataBrokerPort: 383
+  #FQDN for BVD service
+  bvdHost: bvd-www
+  #Port for BVD service
+  bvdPort: 4000
+  #FQDN for StaticFiles service.
+  staticFilesHost: itom-opsb-resource-bundler-svc
+  #Port for StaticFiles service.
+  staticFilesPort: 9443
+
+  resources:
+    limits:
+      cpu: "100m"
+      memory: "250Mi"
+    requests:
+      cpu: "50m"
+      memory: "50Mi"
+  config:
+    admin:
+      replicaCount: 1
+
+deployment:
+  rbac:
+    serviceAccount: itom-monitoring-collection-autoconfigure-job-sa
+
+global:
+  services:
+    hyperscaleObservability:
+#      deploy: true
+      foo: bar
+    syntheticMonitoring:
+#      deploy: true                           # Enable when configuration synchronization is required across APM and Opsbridge Suite
+      foo: bar
+    opticReporting:
+#      deploy: true
+    opticDataLake:
+#      deploy: false                            # Uncomment the parameter when using Shared Optic Data Lake while installing HyperscaleObservability or AutomaticEventCorrelation or OpticReporting capabilities
+      externalOpticDataLake:
+        externalAccessHost:                     # External Access Host of the providing deployment
+        externalAccessPort:                     # Ingress Controller Port
+        integrationUser:                        # IDM Integration User of the providing deployment
+        integrationPasswordKey:  # [DO NOT CHANGE] IDM Integration User password of the providing deployment
+        # User must use one of the below connection mechanisms if using Shared Optic Data Lake
+        connectUsingNamespace: # Connect using cross-namespace communication
+          namespace:                            # Namespace of the providing deployment
+        connectUsingExternalAccessHost: # Connect using External Access Host
+          diReceiverPort:                       # (External Host) Port of OPTIC Data Lake Ingestion Service
+          diAdminPort:                          # (External Host) Port of OPTIC Data Lake Administration Service
+          diDataAccessPort:                     # (External Host) Port of OPTIC Data Lake Data Access Service
+          diPulsarSslPort:                      # (External Host) Port of OPTIC Data Lake Pulsar SSL service
+          diPulsarWebPort:                      # (External Host) Port of OPTIC Data Lake Pulsar Web service  diProtocol:
+  idm:
+    integrationUser:
+    integrationUserKey:
+  
+  isAgentMetricCollectorEnabled: true
+  autoStartAgentMetricCollector: true
+
+  amc:
+    capacityPerCollector: 
+    capacityPerHistoricCollector:
+    dataBrokerNodePort:
+    externalOBM: false
+    containerizedOBM: true
+    numOfParallelCollections:
+    numOfParallelHistoryCollections:
+    obmHostname: ""
+    port: 443
+    rtsmProtocol: https
+    rtsmUsername: ""
+    serverPort:
+    autoconfigure:
+      UpdateConfigurations: true
+      CertCheckRetryInterval: 2
+      CertCheckRetryCount: 60
+      WaitForSchemaInstallation: 3
+      CreateOrUpdateRetryCount: 3
+      EndpointRetryInterval: 1
+      EndpointRetryCount: 10
+
+  opsBridge:
+    externalAccessHost:
+    externalAccessPort:
+    proxy:
+      host:
+      port:
+      user:
+      password:
+      no_proxy:
+
+  rbac:
+    serviceAccountCreate: true
+    roleCreate: true
+
+  nodeSelector: {}
+
+  externalAccessHost:
+  externalAccessPort:
+
+  toolsBase:
+    image: itom-tools-base
+    imageTag: 1.1.0-0011
+
+  securityContext:
+    user: "1999"
+    fsGroup: "1999"
+
+  persistence:
+    enabled: false
+    logVolumeClaim:
+    configVolumeClaim:
+
+  docker:
+    # set the global.docker.registry and orgName to your internal Docker registry/org
+    registry: localhost:5000
+    orgName: hpeswitom
+    imagePullSecret: ""
+    imagePullPolicy: IfNotPresent
+
+  securityContext:
+    user: "1999"
+    fsGroup: "1999"
+
+  # Global image references for vault
+  vaultRenew:
+    image: kubernetes-vault-renew
+    imageTag: 0.15.0-0026
+  vaultInit:
+    image: kubernetes-vault-init
+    imageTag: 0.15.0-0026
+  suiteLabel: Worker
+  suiteLabelValue: label

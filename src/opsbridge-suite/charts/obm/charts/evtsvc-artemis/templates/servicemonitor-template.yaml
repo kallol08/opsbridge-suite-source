@@ -1,0 +1,41 @@
+{{- /* Copyright 2020-2023 Open Text */ -}}
+
+{{- if and ( .Capabilities.APIVersions.Has "monitoring.coreos.com/v1" ) .Values.global.prometheus.deployPrometheusConfig }}
+{{- $name := print  .Values.global.evtsvc.namePrefix "-artemis" -}}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: "{{ $name }}"
+  namespace: {{ .Release.Namespace }}
+  labels:
+{{ include "evtsvc-artemis.labels" . | indent 4 }}
+{{ with .Values.global.prometheus.prometheusSelector }}
+{{ toYaml . | indent 4 }}
+{{ end }}
+spec:
+  jobLabel:  "{{ $name }}"
+  namespaceSelector:
+    matchNames:
+    - {{ .Release.Namespace }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name:  "{{ $name }}"
+  endpoints:
+  - scheme: https
+    path: "/artemis/mgmt/prometheus"
+    targetPort: secure-rest
+    tlsConfig:
+      ca:
+        configMap:
+          name: public-ca-certificates
+          key: {{ include "helm-lib.getTlsCertNameFromRealmList" (dict "Values" .Values) }}
+      cert:
+        secret:
+          name: "{{ .Values.global.evtsvc.namePrefix }}-artemis-certificate"
+          key: tls.crt
+      keySecret:
+        name: "{{ .Values.global.evtsvc.namePrefix }}-artemis-certificate"
+        key: tls.key
+      insecureSkipVerify: false
+      serverName: "{{ .Values.global.evtsvc.namePrefix }}-artemis"
+{{- end }}

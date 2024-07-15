@@ -1,0 +1,247 @@
+{{- if and (not .Values.enableClusterLog) (ne .Values.logging.output.receiver.type "file") }}
+
+{{ $namePrefix := include "namePrefix" . }}
+{{ $serviceAccount := include "itom-fluentbit.serviceAccountName" .}}
+{{ $logSourcePvc := include "helm-lib.pvcStorage" (dict "claim" "logVolumeClaim" "Release" .Release "Template" .Template "Values" $.Values ) }}
+{{ $tlsVerifyEnabled := include "itom-fluentbit.tlsVerify.enabled" . }}
+{{- range .Values.deployment.instances }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $namePrefix }}-fluentbit-{{ .name }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    k8s-app: fluentbit-logging
+    addonmanager.kubernetes.io/mode: Reconcile
+    deployments.microfocus.com/component: itom-fluentbit
+    {{- if $.Values.logging.labels }}
+    {{- toYaml $.Values.logging.labels  | nindent 4 }}
+    {{- end }}
+  annotations:
+    deployment.microfocus.com/runlevel: DB
+    deployment.microfocus.com/simple-update: ignore
+spec:
+  selector:
+    matchLabels:
+      k8s-app: {{ $namePrefix }}-fluentbit-{{ .name }}
+  template:
+    metadata:
+      labels:
+        k8s-app: {{ $namePrefix }}-fluentbit-{{ .name }}
+        kubernetes.io/name: "itom-fluentbit-logging"
+        deployments.microfocus.com/component: itom-fluentbit
+        {{- if $.Values.logging.labels }}
+        {{- toYaml $.Values.logging.labels  | nindent 8 }}
+        {{- end }}
+      {{ if eq $.Values.global.secretStorage "vault" }}
+      annotations:
+        pod.boostport.com/vault-approle: {{ $.Release.Namespace }}-{{ $.Values.global.vaultAppRole }}
+        pod.boostport.com/vault-init-container: install
+      {{ end }}
+    spec:
+      serviceAccountName: {{ $serviceAccount }}
+      initContainers:
+        - name: init
+          image: "{{ $.Values.global.docker.registry  }}/{{ $.Values.global.docker.orgName }}/{{ $.Values.global.k8sSidecar.image  }}:{{ $.Values.global.k8sSidecar.imageTag }}"
+          imagePullPolicy: {{ $.Values.global.docker.imagePullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+              - ALL
+          resources:
+            limits:
+              cpu: 200m
+              memory: 200Mi
+            requests:
+              cpu: 5m
+              memory: 50Mi
+          env:
+          - name: METHOD
+            value: LIST
+          - name: LABEL
+            value: {{ .configSelector.labelName }}
+          - name: LABEL_VALUE
+            value: {{ .configSelector.labelValue | quote }}
+          - name: FOLDER
+            value: /fluentbit/config
+          - name: RESOURCE
+            value: both
+          - name: UNIQUE_FILENAMES
+            value: "true"
+          volumeMounts:
+          - name: config
+            mountPath: /fluentbit/config
+        {{ if eq $.Values.global.secretStorage "vault" }}
+        {{- $certNames := printf "Common_Name:fluentbit,Additional_SAN:fluentbit.%s" $.Release.Namespace -}}
+        {{- include "helm-lib.containers.vaultInit" (dict "certNames" $certNames "Values" $.Values) | nindent 8 }}
+        {{ end }}
+      containers:
+        {{ if eq $.Values.global.secretStorage "vault" }}
+        {{- include "helm-lib.containers.vaultRenew" (dict "Values" $.Values) | nindent 8 }}
+        {{ end }}
+        - name: main
+          image: "{{ $.Values.global.docker.registry  }}/{{ $.Values.global.docker.orgName }}/{{ $.Values.fluentbit.image  }}:{{ $.Values.fluentbit.imageTag }}"
+          imagePullPolicy: {{ $.Values.global.docker.imagePullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+              - ALL
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - /fluentbit/scripts/liveness.sh
+            initialDelaySeconds: 60
+            successThreshold: 1
+            failureThreshold: 3
+            timeoutSeconds: 10
+          resources:
+          {{- with $.Values.resources }}
+          {{- toYaml . | nindent 12 }}
+          {{- end }}
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: CLUSTER_NAME
+              value: {{ $.Values.global.cluster.name }}
+            - name: FLUENT_BIT_LOG_RECEIVER_TYPE
+              value: {{ $.Values.logging.output.receiver.type }}
+            - name: FLUENT_BIT_LOG_RECEIVER_URL
+              value: {{ $.Values.logging.output.receiver.url }}
+            - name: FLUENT_BIT_LOG_RECEIVER_USER
+              value: {{ $.Values.logging.output.receiver.user }}
+            - name: FLUENT_BIT_LOG_RECEIVER_OUTPUT_FORMAT
+              value: {{ $.Values.logging.output.receiver.format }}
+            - name: FLUENT_BIT_LOG_RECEIVER_OUTPUT_DELIMITER
+              value: {{ $.Values.logging.output.receiver.delimiter | quote }}
+            - name: OUTPUT_TO_ELASTICSEARCH_TIME_LOG_FORMAT
+              value: {{ $.Values.logging.output.receiver.elasticSearch.logTimeFormat | quote }}
+            - name: OUTPUT_TO_OBA_LOG_TIME_FORMAT
+              value: {{ $.Values.logging.output.receiver.oba.logTimeFormat | quote }}
+            {{- if $.Values.logging.output.receiver.elasticSearch.esCloud.cloudId }}
+            - name: ELASTICSEARCH_CLOUD_ID
+              value: {{ $.Values.logging.output.receiver.elasticSearch.esCloud.cloudId | quote }}
+            {{- end }}
+            {{- if $.Values.logging.output.receiver.elasticSearch.aws.awsAuth }}
+            - name: ELASTICSEARCH_AWS_AUTH
+              value: {{ $.Values.logging.output.receiver.elasticSearch.aws.awsAuth | quote }}
+            - name: ELASTICSEARCH_AWS_REGION
+              value: {{ $.Values.logging.output.receiver.elasticSearch.aws.awsRegion | quote }}
+            {{- end }}
+            - name: HTTP_PROXY
+              value: {{ $.Values.global.proxy.httpProxy }}
+            - name: HTTPS_PROXY
+              value: {{ $.Values.global.proxy.httpsProxy }}
+            - name: NO_PROXY
+              value: {{ $.Values.global.proxy.noProxy }}
+            - name: LOG_PATH
+              value: /fluentbit/deployment-log
+            - name: CONFIG_PATH
+              value: /fluentbit/config
+            - name: USAGE_TYPE
+              value: deployment
+            - name: SECRET_STORAGE
+              value: {{ default "vault" $.Values.global.secretStorage | quote}}
+            - name: SECRET_STORAGE_NAME
+              value: {{ default "" $.Values.global.secretStorageName | quote}}
+            - name: PASSWORDKEY
+              value: {{ $.Values.logging.output.receiver.passwordKey }}
+          volumeMounts:
+            - name: log-location
+              mountPath: /fluentbit/deployment-log
+            - name: config
+              mountPath: /fluentbit/config
+            - name: tmp
+              mountPath: /tmp
+            {{- if $.Values.logging.output.receiver.password }}
+            - name: receiver
+              mountPath: "/fluentbit/receiver"
+            {{- end }}
+            {{- if and (and (not $.Values.logging.output.receiver.caCert) (eq $tlsVerifyEnabled "On")) ($.Values.global.tlsTruststore) }}
+            - name: certificates-pool
+              mountPath: "/fluentbit/certificates"
+            {{- end }}
+            {{ if eq $.Values.global.secretStorage "vault" }}
+            - name: vault-token
+              mountPath: /var/run/secrets/boostport.com
+            {{ end }}
+        - name: sc
+          image: "{{ $.Values.global.docker.registry  }}/{{ $.Values.global.docker.orgName }}/{{ $.Values.global.k8sSidecar.image  }}:{{ $.Values.global.k8sSidecar.imageTag }}"
+          imagePullPolicy: {{ $.Values.global.docker.imagePullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            limits:
+              cpu: 200m
+              memory: 200Mi
+            requests:
+              cpu: 5m
+              memory: 50Mi
+          env:
+            - name: METHOD
+              value: SLEEP
+            - name: LABEL
+              value: {{ .configSelector.labelName }}
+            - name: LABEL_VALUE
+              value: {{ .configSelector.labelValue | quote }}
+            - name: FOLDER
+              value: /fluentbit/config
+            - name: RESOURCE
+              value: both
+            - name: UNIQUE_FILENAMES
+              value: "true"
+          volumeMounts:
+            - name: config
+              mountPath: /fluentbit/config
+      securityContext:
+        runAsUser: {{ default "1999" $.Values.global.securityContext.user }}
+        fsGroup: {{ default "1999" $.Values.global.securityContext.fsGroup }}
+        runAsGroup: {{ default "1999" $.Values.global.securityContext.fsGroup }}
+        supplementalGroups: [{{ default "1999" $.Values.global.securityContext.fsGroup }}]
+        seccompProfile:
+          type: RuntimeDefault
+        runAsNonRoot: true
+      {{- if or $.Values.deployment.tolerations $.Values.global.cluster.tolerations }}
+      tolerations:
+      {{- if $.Values.deployment.tolerations }}
+      {{- toYaml $.Values.deployment.tolerations | nindent 8 }}
+      {{- end }}
+      {{- if $.Values.global.cluster.tolerations }}
+      {{- toYaml $.Values.global.cluster.tolerations | nindent 8 }}
+      {{- end }}
+      {{- end }}
+      volumes:
+        {{ if eq $.Values.global.secretStorage "vault" }}
+        - name: vault-token
+          emptyDir: {}
+        {{ end }}
+        - name: config
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+        - name: log-location
+        {{ $logSourcePvc | nindent 10 }}
+        {{- if $.Values.logging.output.receiver.password }}
+        - name: receiver
+          secret:
+            secretName: {{ $namePrefix }}-fluentbit-receiver
+        {{- end }}
+        {{- if and (and (not $.Values.logging.output.receiver.caCert) (eq $tlsVerifyEnabled "On")) ($.Values.global.tlsTruststore) }}
+        - name: certificates-pool
+          configMap:
+            name: {{ $.Values.global.tlsTruststore }}
+        {{- end }}
+{{- end }}
+{{- end }}

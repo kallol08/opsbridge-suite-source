@@ -1,0 +1,130 @@
+{{ $namePrefix := include "namePrefix" . }}
+{{/*# Compatible with deprecated k8sProvider key*/}}
+{{ $provider := include "helm-lib.service.getKubernetesProvider" . }}
+
+{{- if .Values.nginx.service.external.enable }}
+{{ $externalServiceType := "" }}
+{{- if (.Values.global.expose).type }}
+  {{ $externalServiceType = include "helm-lib.service.getServiceType" . }}
+{{- else }}
+  {{- if hasPrefix "cdf" $provider }}
+    {{ $externalServiceType = (default "NodePort" .Values.nginx.service.external.type) }}
+  {{- else if eq "openshift" $provider }}
+    {{ $externalServiceType = (default "ClusterIP" .Values.nginx.service.external.type) }}
+  {{- else }}
+    {{ $externalServiceType = (default "LoadBalancer" .Values.nginx.service.external.type) }}
+  {{- end }}
+{{- end }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $namePrefix }}-ingress-controller-svc
+  namespace: {{ .Release.Namespace }}
+  annotations:
+  {{- if .Values.nginx.service.external.annotations }}
+  {{- toYaml .Values.nginx.service.external.annotations  | nindent 4 }}
+  {{- end }}
+  {{- if eq $externalServiceType "LoadBalancer" }}
+  {{- if .Values.global.loadBalancer.annotations }}
+  {{- toYaml .Values.global.loadBalancer.annotations  | nindent 4 }}
+  {{- end }}
+  {{- if (.Values.global.expose.externalLoadBalancer).annotations }}
+  {{- toYaml .Values.global.expose.externalLoadBalancer.annotations | nindent 4 }}
+  {{- end }}
+  {{- end }}
+spec:
+  type: {{ $externalServiceType }}
+  {{- if and (or .Values.global.expose.externalLoadBalancer.ip .Values.global.loadBalancer.ip) (eq $externalServiceType "LoadBalancer")}}
+  loadBalancerIP: {{ coalesce .Values.global.expose.externalLoadBalancer.ip .Values.global.loadBalancer.ip }}
+  {{- end }}
+  {{- if or .Values.global.expose.externalLoadBalancer.sourceRanges .Values.global.loadBalancer.sourceRanges .Values.nginx.service.external.sourceRanges }}
+  loadBalancerSourceRanges:
+  {{- coalesce .Values.global.expose.externalLoadBalancer.sourceRanges .Values.nginx.service.external.sourceRanges .Values.global.loadBalancer.sourceRanges | toYaml | nindent 4 }}
+  {{- end }}
+  {{- if or .Values.global.expose.externalLoadBalancer.externalIPs .Values.nginx.service.external.externalIPs }}
+  externalIPs:
+  {{- coalesce .Values.global.expose.externalLoadBalancer.externalIPs .Values.nginx.service.external.externalIPs | toYaml | nindent 4 }}
+  {{- end }}
+  {{-  include "helm-lib.service.getIpConfig" . |nindent 2 }}
+  ports:
+    - name: https
+      protocol: TCP
+      targetPort: 8443
+      {{- if and (not .Values.nginx.service.httpsPort) (not .Values.global.nginx.httpsPort) (not .Values.global.externalAccessPort) }}
+      {{- cat "ERROR: Neither nginx.service.httpsPort nor global.nginx.httpsPort nor global.externalAccessPort is defined" | fail }}
+      {{- end }}
+      {{- if and (eq $externalServiceType "NodePort") (not .Values.nginx.service.external.nodePortAutoAssign) }}
+      {{- if hasSuffix "frontend-ui" .Values.nginx.defaultBackendService }}
+      nodePort: {{ coalesce .Values.nginx.service.httpsNodePort .Values.nginx.service.httpsPort .Values.global.nginx.httpsPort .Values.global.externalAccessPort }}
+      {{- else }}
+      nodePort: {{ coalesce .Values.global.expose.httpsPort .Values.nginx.service.httpsNodePort .Values.nginx.service.httpsPort .Values.global.nginx.httpsPort .Values.global.externalAccessPort }}
+      {{- end }}
+      {{- end }}
+      port: {{ coalesce .Values.nginx.service.httpsPort .Values.global.nginx.httpsPort .Values.global.externalAccessPort }}
+    {{- if and (not (hasSuffix "frontend-ui" .Values.nginx.defaultBackendService)) (or .Values.global.externalAccessCertPort .Values.nginx.service.external.clientCertAuthPort) }}
+    - name: client-cert-auth
+      protocol: TCP
+      targetPort: 8444
+      {{- if and (eq $externalServiceType "NodePort") (not .Values.nginx.service.external.nodePortAutoAssign) }}
+      nodePort: {{ coalesce .Values.global.externalAccessCertPort .Values.nginx.service.external.clientCertAuthNodePort .Values.nginx.service.external.clientCertAuthPort }}
+      {{- end }}
+      port: {{ coalesce .Values.global.externalAccessCertPort .Values.nginx.service.external.clientCertAuthPort }}
+    {{- end }}
+  selector:
+  {{- include "itom-nginx-ingress-controller.selectorLabels" . | nindent 4 }}
+{{- end }}
+---
+{{- if .Values.nginx.service.internal.enable }}
+apiVersion: v1
+kind: Service
+metadata:
+  name:  {{ $namePrefix }}-ingress-controller-svc-internal
+  namespace: {{ .Release.Namespace }}
+  annotations:
+  {{- include "helm-lib.service.internalLBAnnotations" . | nindent 4 }}
+  {{- if .Values.nginx.service.internal.annotations }}
+    {{- $instanceTarget := true }}
+    {{- range $key, $val := .Values.nginx.service.internal.annotations }}
+    {{- if eq $key "service.beta.kubernetes.io/aws-load-balancer-type" }}
+    {{- $instanceTarget = false }}
+    {{- end }}
+    {{- end }}
+    {{- if and (eq $provider "aws") $instanceTarget }}
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    {{- end }}
+    {{- toYaml .Values.nginx.service.internal.annotations  | nindent 4 }}
+  {{- else }}
+    {{- if eq $provider "aws" }}
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    {{- end }}
+  {{- end }}
+  {{- if eq .Values.nginx.service.internal.type "LoadBalancer" }}
+  {{- if .Values.global.loadBalancer.annotations }}
+  {{- toYaml .Values.global.loadBalancer.annotations  | nindent 4 }}
+  {{- end }}
+  {{- end }}
+spec:
+  type: {{ .Values.nginx.service.internal.type }}
+  {{- if or .Values.global.expose.internalLoadBalancer.ip .Values.global.loadBalancer.ip }}
+  loadBalancerIP: {{ coalesce .Values.global.expose.internalLoadBalancer.ip .Values.global.loadBalancer.ip }}
+  {{- end }}
+  {{- if or .Values.global.expose.internalLoadBalancer.sourceRanges .Values.global.loadBalancer.sourceRanges .Values.nginx.service.internal.sourceRanges }}
+  loadBalancerSourceRanges:
+  {{- coalesce .Values.global.expose.internalLoadBalancer.sourceRanges .Values.nginx.service.internal.sourceRanges .Values.global.loadBalancer.sourceRanges | toYaml | nindent 4 }}
+  {{- end }}
+  {{- if or .Values.global.expose.internalLoadBalancer.externalIPs .Values.nginx.service.internal.externalIPs }}
+  externalIPs:
+  {{- coalesce .Values.global.expose.internalLoadBalancer.externalIPs .Values.nginx.service.internal.externalIPs | toYaml | nindent 4 }}
+  {{- end }}
+  {{-  include "helm-lib.service.getIpConfig" . |nindent 2 }}
+  ports:
+    - name: https
+      protocol: TCP
+      targetPort: 8443
+      {{- if and (not .Values.nginx.service.httpsPort) (not .Values.global.nginx.httpsPort) (not .Values.global.externalAccessPort) }}
+      {{- cat "ERROR: Neither nginx.service.httpsPort, global.nginx.httpsPort nor global.externalAccessPort is defined" | fail }}
+      {{- end }}
+      port: {{ coalesce .Values.nginx.service.internal.httpsPort .Values.nginx.service.httpsPort .Values.global.nginx.httpsPort .Values.global.externalAccessPort }}
+  selector:
+  {{- include "itom-nginx-ingress-controller.selectorLabels" . | nindent 4 }}
+{{- end }}

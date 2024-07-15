@@ -1,0 +1,89 @@
+{{- if .Values.enableClusterLog }}
+  {{ $namePrefix := include "namePrefix" . }}
+  {{ $criName := include "itom-fluentbit.criName" . }}
+  {{ $inputPathStr := include "itom-fluentbit.genInputPath" . }}
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: {{ $namePrefix }}-fluentbit
+  namespace: {{ .Release.Namespace }}
+  labels:
+    addonmanager.kubernetes.io/mode: Reconcile
+    {{ .Values.daemonSet.configSelector.labelName }}: {{ .Values.daemonSet.configSelector.labelValue | quote }}
+data:
+  logging.properties: |
+    {{- range $key, $val := .Values.logging.properties }}
+    {{ $key }}={{ $val | quote }}
+  {{- end }}
+  fluent.conf: |-
+    [SERVICE]
+        Flush           5
+        Daemon          off
+        Log_Level       error
+        storage.path    /fluentbit/data/cache
+
+  {{- if or (hasPrefix "cdf-" .Values.global.cluster.k8sProvider) (eq .Values.global.cluster.k8sProvider "cdf") }}
+  system.input.conf: |-
+    [INPUT]
+        Name systemd
+        Path ${SYSTEM_LOG_DIR}
+        Tag system.*
+        Systemd_Filter _SYSTEMD_UNIT=kubelet.service
+        Systemd_Filter _SYSTEMD_UNIT={{ $criName }}.service
+        Systemd_Filter_Type Or
+        Read_From_Tail Off
+        storage.type  memory
+        DB /fluentbit/data/position/system/systemd.${NODE_NAME}.log.pos
+  {{- end }}
+
+  container.input.conf: |-
+    [INPUT]
+        Name tail
+        Path {{ $inputPathStr }}
+        Exclude_Path /fluentbit/containers/itom-fluentbit-infra*
+        multiline.parser docker, cri
+        Tag container.*
+        storage.type  filesystem
+        Mem_Buf_Limit 300MB
+        Buffer_Max_Size 50MB
+        Buffer_Chunk_Size 30MB
+        Read_from_Head true
+        Skip_Long_Lines On
+        Refresh_Interval {{ .Values.logging.properties.REFRESH_INTERAL }}
+        DB /fluentbit/data/position/container/container.${NODE_NAME}.log.pos
+
+    [FILTER]
+        Name             kubernetes
+        Match            container.*
+        use_tag_for_meta true
+        Kube_Tag_Prefix  container.fluentbit.containers.
+
+    [FILTER]
+        Name nest
+        Match container.*
+        Operation lift
+        Nest_under kubernetes
+
+    [FILTER]
+        Name record_modifier
+        Match container.*
+        Allowlist_key time
+        Allowlist_key log
+        Allowlist_key namespace_name
+        Allowlist_key pod_name
+        Allowlist_key container_name
+
+    [FILTER]
+        Name modify
+        Match container.*
+        Add node ${NODE_NAME}
+
+    {{- if and .Values.enableClusterLog (eq .Values.logging.output.receiver.type "file") }}
+    [FILTER]
+        Name          rewrite_tag
+        Match         container.*
+        Rule          $time ^(.*)$ pods/$namespace_name.$pod_name.$container_name.log false
+        Emitter_Storage.type memory
+        Emitter_Mem_Buf_Limit {{ .Values.logging.EmitterMemBufLimit }}
+    {{- end }}
+{{- end }}

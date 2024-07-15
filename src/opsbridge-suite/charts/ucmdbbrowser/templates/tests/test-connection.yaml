@@ -1,0 +1,16 @@
+{{- $namePrefix := include "namePrefix" . -}}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ $namePrefix }}-ucmdb-browser-test-connection"
+  labels:
+    {{- include "ucmdb.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test-success
+spec:
+  containers:
+    - name: wget
+      image: {{ .Values.global.docker.registry}}/{{ .Values.global.docker.orgName }}/{{ .Values.global.toolsBase.image }}:{{ .Values.global.toolsBase.imageTag }}
+      command: ['wget']
+      args:  ['https://{{ $namePrefix }}-ucmdb-browser-svc:8443']
+  restartPolicy: Never

@@ -1,0 +1,36 @@
+{{- if  eq (include "restrict.isClient" .) "false" }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: itom-restrict-upgrade-ingress
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: itom-restrict-upgrade-svc
+    app.kubernetes.io/managed-by: {{.Release.Name}}
+    app.kubernetes.io/version: {{.Values.restrictUpgrade.imageTag }}
+    itom.microfocus.com/capability: opsbridge-suite
+    tier.itom.microfocus.com/ingress: ingress
+  annotations:
+    {{- include "helm-lib.ingress.commonAnnotations" . |nindent 4 }}
+    {{ default "ingress.kubernetes.io" .Values.global.nginx.annotationPrefix }}/default-backend: "itom-restrict-upgrade-svc"
+    {{ default "ingress.kubernetes.io" .Values.global.nginx.annotationPrefix }}/backend-protocol: "HTTPS"    
+    {{ default "ingress.kubernetes.io" .Values.global.nginx.annotationPrefix }}/secure-backends: "true"
+
+spec:
+  rules:
+  {{- if .Values.global.setFqdnInIngress }}
+  - host: {{ .Values.global.externalAccessHost }}
+    http:
+  {{- else }}
+  - http:
+  {{- end }}      
+      paths:
+        - path:  {{.Values.itomRestrictUpgrade.endPoint}}
+          pathType: Exact
+          backend:
+            service:
+              name: itom-restrict-upgrade-svc
+              port:
+                number: 8443
+
+{{- end}}

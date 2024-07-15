@@ -1,0 +1,83 @@
+[{
+    "operation": "ADD_OR_UPDATE",
+    "type": "role",
+    "names": {
+      "organizationName": "Provider"
+    },
+    "attributes": {
+      "name": "97b802c1-6a84-45da-a6da-b2b39652d980",
+      "displayName": "OBM - Scripting-Host integration",
+      "description": "This role contains minimal permissions for the OBM - Scripting Host integration",
+      "application": "CMDB"
+    }
+  }, {
+    "operation": "ADD_OR_UPDATE",
+    "type": "role",
+    "names": {
+      "organizationName": "Provider"
+    },
+    "attributes": {
+      "name": "97b802c1-6a84-45da-a6da-b2b39652d980",
+      "displayName": "OBM - Scripting-Host integration",
+      "description": "This role contains minimal permissions for the OBM - Scripting Host integration",
+      "application": "OBM"
+    }
+  }, {
+    "operation": "ADD_OR_UPDATE",
+    "type": "databaseUser",
+    "names": {
+      "organizationName": "Provider",
+      "databaseUserName": "obm-scripting-host-integration"
+    },
+    "attributes": {
+      "name": "obm-scripting-host-integration",
+      "displayName": "OBM - Scripting-Host integration",
+      "description": "Integration user for OBM <-> Scripting Host integration",
+      "password": "{obm_scripting_host_integration_password}",
+      "type": "INTERNAL_SEEDED_USER"
+    },
+    "associations": [{
+        "name": "97b802c1-6a84-45da-a6da-b2b39652d980",
+        "type": "role",
+        "application": "CMDB"
+      }, {
+        "name": "97b802c1-6a84-45da-a6da-b2b39652d980",
+        "type": "role",
+        "application": "OBM"
+      }
+    ]
+  }, {
+    "operation": "ADD_OR_UPDATE",
+    "type": "role",
+    "attributes": {
+      "name": "mvad_admin",
+      "displayName": "MVAD Admin role",
+      "description": "All admin permissions for MVAD",
+      "application": "MVAD",
+      "modifiable": false,
+      "deletable": false
+    },
+    "names": {
+      "organizationName": "Provider"
+    },
+    "associations": [{
+        "name": "Administrators",
+        "type": "group"
+      }
+    ]
+  }, {
+    "operation": "ADD_OR_UPDATE",
+    "type": "role",
+    "attributes": {
+      "name": "mvad_viewer",
+      "displayName": "MVAD Viewer role",
+      "description": "All viewer permissions for MVAD",
+      "application": "MVAD",
+      "modifiable": false,
+      "deletable": false
+    },
+    "names": {
+      "organizationName": "Provider"
+    }
+  }
+]

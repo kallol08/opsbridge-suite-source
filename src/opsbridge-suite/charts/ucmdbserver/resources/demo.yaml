@@ -1,0 +1,11 @@
+resources:
+  requests:
+    cpu: 100m
+    memory: 4Gi
+  limits:
+    cpu: 4
+    memory: 8Gi
+instanceSize: S
+jvmXmsMemory: 512
+jvmXmxMemory: 6964
+replicaCount: 1

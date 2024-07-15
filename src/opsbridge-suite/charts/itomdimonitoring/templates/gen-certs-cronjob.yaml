@@ -1,0 +1,68 @@
+{{/* # */}}
+{{/* # Copyright 2023 Open Text. */}}
+{{/* # */}}
+{{/* # The only warranties for products and services of Open Text and its affiliates and  */}}
+{{/* # licensors (“Open Text”) are as may be set forth in the express warranty statements  */}}
+{{/* # accompanying such products and services. Nothing herein should be construed as */}}
+{{/* # constituting an additional warranty. Open Text shall not be liable for technical or */}}
+{{/* # editorial errors or omissions contained herein. The information contained herein is  */}}
+{{/* # subject to change without notice. */}}
+{{/* # */}}
+{{/* # Except as specifically indicated otherwise, this document contains confidential  */}}
+{{/* # information and a valid license is required for possession, use or copying. If this work  */}}
+{{/* # is provided to the U.S. Government, consistent with FAR 12.211 and 12.212, Commercial Computer  */}}
+{{/* # Software, Computer Software Documentation, and Technical Data for Commercial Items are licensed to */}}
+{{/* # the U.S. Government under vendor’s standard commercial license. */}}
+{{/* # */}}
+---
+{{- if .Capabilities.APIVersions.Has "batch/v1/CronJob" -}}
+apiVersion: batch/v1
+{{- else }}
+apiVersion: batch/v1beta1
+{{- end }}
+kind: CronJob
+metadata:
+  name: {{ template "monitoring.fullname" . }}-{{ .Values.monitoring.gencerts.component }}-cronjob
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: "{{ template "monitoring.fullname" . }}-{{ .Values.monitoring.gencerts.component }}"
+    {{- include "monitoring.standardLabels" . | nindent 4 }}
+  annotations:
+    deployment.microfocus.com/runlevel: UP  
+spec:
+  schedule: "{{ .Values.monitoring.gencerts.scheduleCron }}"
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    {{- include "gencerts.job.spec" . | nindent 4 }}
+---
+{{/* # Kick off job for initial run (CronJob does not run a job immediately) */}}
+{{ if .Capabilities.APIVersions.Has "batch/v1" -}}
+apiVersion: batch/v1
+{{- else }}
+apiVersion: batch/v1beta1
+{{- end }}
+kind: Job
+metadata:
+  name: {{ template "monitoring.fullname" . }}-{{ .Values.monitoring.gencerts.component }}-job-{{ randAlphaNum 7 | lower }}
+  labels:
+    app.kubernetes.io/name: "{{ template "monitoring.fullname" . }}-{{ .Values.monitoring.gencerts.component }}"
+    {{- include "monitoring.standardLabels" . | nindent 4 }}
+{{- include "gencerts.job.spec" . | nindent 0 }}
+---
+{{ if .Capabilities.APIVersions.Has "batch/v1" -}}
+apiVersion: batch/v1
+{{- else }}
+apiVersion: batch/v1beta1
+{{- end }}
+kind: Job
+metadata:
+  name: {{ template "monitoring.fullname" . }}-{{ .Values.monitoring.gencerts.component }}-job-uninstall-{{ randAlphaNum 7 | lower }}
+  labels:
+    app.kubernetes.io/name: "{{ template "monitoring.fullname" . }}-{{ .Values.monitoring.gencerts.component }}"
+    {{- include "monitoring.standardLabels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-delete
+    "helm.sh/hook-weight": "-500"
+    "helm.sh/hook-delete-policy": hook-succeeded
+{{- include "gencerts.job.spec" (set . "gencertsMode" "DeleteSecret") | nindent 0 }}

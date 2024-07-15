@@ -1,0 +1,41 @@
+{{- /* Copyright 2020-2023 Open Text */ -}}
+
+{{- if and .Values.scriptingHost.enabled ( .Capabilities.APIVersions.Has "monitoring.coreos.com/v1" ) .Values.global.prometheus.deployPrometheusConfig }}
+{{- $name := print .Values.deployment.name "-scripting-host" -}}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: "{{ $name }}"
+  namespace: {{ .Release.Namespace }}
+  labels:
+{{ with .Values.global.prometheus.prometheusSelector }}
+{{ toYaml . | indent 4 }}
+{{ end }}
+{{ include "obm.scripting-host.labels" (dict "name" $name "Release" .Release "Chart" .Chart "Values" .Values) | indent 4 }}
+spec:
+  jobLabel:  "{{ $name }}"
+  namespaceSelector:
+    matchNames:
+    - {{ .Release.Namespace }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name:  "{{ $name }}"
+  endpoints:
+  - path: /metrics
+    scheme: https
+    targetPort: metrics
+    tlsConfig:
+      ca:
+        configMap:
+          name: public-ca-certificates
+          key: {{ include "helm-lib.getTlsCertNameFromRealmList" (dict "Values" .Values) }}
+      insecureSkipVerify: false
+      serverName: {{ .Values.deployment.name }}-scripting-host
+    basicAuth:
+      username:
+        name: "{{ .Values.deployment.name }}-scripting-host-metrics-credentials"
+        key: user
+      password:
+        name: "{{ .Values.deployment.name }}-scripting-host-metrics-credentials"
+        key: password
+{{- end }}

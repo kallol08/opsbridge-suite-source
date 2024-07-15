@@ -1,0 +1,77 @@
+{
+  "queues": [
+    {
+      "name": "failed_recipient_notification",
+      "max-mem-percentage": 20,
+      "memshares": 1
+    },
+    {
+      "name": "queue/alert_engine_alert",
+      "max-mem-percentage": 20,
+      "memshares": 1
+    },
+    {
+      "name": "queue/alert_engine_notification",
+      "max-mem-percentage": 20,
+      "memshares": 1
+    },
+    {
+      "name": "recipient_notification",
+      "max-mem-percentage": 20,
+      "memshares": 1
+    }
+  ],
+  "topics": [
+    {
+      "name": "opr_marble_over_time_status",
+      "max-mem-percentage": 80,
+      "memshares": 10
+    },
+    {
+      "name": "DTNotification",
+      "max-mem-percentage": 20,
+      "memshares": 1
+    },
+    {
+      "name": "ESS_Marble_Topic_1",
+      "max-mem-percentage": 80,
+      "memshares": 10
+    },
+    {
+      "name": "GlobalIdJMSTopic",
+      "max-mem-percentage": 20,
+      "memshares": 1
+    },
+    {
+      "name": "IMS.customer_1",
+      "max-mem-percentage": 20,
+      "memshares": 1
+    },
+    {
+      "name": "Notification",
+      "max-mem-percentage": 20,
+      "memshares": 1,
+      "access-type": "read"
+    },
+    {
+      "name": "opr_oas_rtsm_view_permission_change_topic",
+      "max-mem-percentage": 20,
+      "memshares": 1
+    },
+    {
+      "name": "opr_store_update_event_topic",
+      "max-mem-percentage": 90,
+      "memshares": 20
+    },
+    {
+      "name": "topic/repositories_change",
+      "max-mem-percentage": 20,
+      "memshares": 1
+    },
+    {
+      "name": "opr_marble_calc_result_topic",
+      "max-mem-percentage": 80,
+      "memshares": 10
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+apiVersion: v2
+appVersion: "24.2"
+dependencies:
+- name: helm-lib
+  repository: https://svsartifactory.swinfra.net/artifactory/itom-helm-charts-stable
+  version: 1.11.0-2
+description: Open Text - Flink Controller
+name: flink-controller
+version: 1.4.0

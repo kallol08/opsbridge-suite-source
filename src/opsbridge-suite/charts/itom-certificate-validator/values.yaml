@@ -1,0 +1,66 @@
+global:
+  docker:
+    registry: localhost:5000
+    orgName: hpeswitom
+    imagePullSecret: ''
+    imagePullPolicy: IfNotPresent
+  validateCertificate: true
+  initSecrets: ''
+  securityContext:
+    user: '1999'
+    fsGroup: '1999'
+  database:
+    internal: true
+  vertica:
+    embedded: true
+    rwuserkey: ITOMDI_DBA_PASSWORD_KEY
+    rouserkey: ITOMDI_DBA_PASSWORD_KEY
+  secrets:
+    ITOMDI_DBA_PASSWORD_KEY: null
+    ITOMDI_RO_USER_PASSWORD_KEY: null
+    AUTOPASS_DB_USER_PASSWORD_KEY: null
+    BVD_DB_USER_PASSWORD_KEY: null
+    CM_DB_PASSWD_KEY: null
+    IDM_DB_USER_PASSWORD_KEY: null
+    MA_DB_USER_PASSWORD_KEY: null
+    OBM_DB_USER_PASSWORD_KEY: null
+    RTSM_DB_USER_PASSWORD_KEY: null
+  rbac:
+    serviceAccountCreate: true
+    roleCreate: true
+  apiClient:
+    authorizedClientCAs: null
+deployment:
+  database:
+    internal: null
+    dbType: null
+    dbHost: null
+    dbPort: null
+    dbTlsEnabled: null
+    dbOracleSid: null
+    dbOracleConnectionString: null
+  rbac:
+    serviceAccount: certvalidator-sa
+certValidator:
+  image: itom-certvalidator
+  imageTag: 1.2.0-main-37.commit-10ed983
+resources:
+  requests:
+    cpu: 100m
+    memory: 64Mi
+  limits:
+    cpu: 250m
+    memory: 256Mi
+keyType: RSA,ECDSA
+rsaKeyLength: 2048
+dsaKeyLength: 256
+keyUsage: Digital_Signature
+extendedKeyUsage: TLS_Web_Server_auth
+signatureHashAlgorithm: SHA1,SHA256,SHA384,SHA512
+opsbDbCertConfigmap: opsb-ca-certificate-certv
+nomDbCertConfigmap: default-ca-certificates-certv
+opticoneDbCertConfigmap: opticone-ca-certificate-certv
+apiClientCertConfigmap: api-client-ca-certificates-certv
+odlSecret: messagebus-external-ca-cert-certv
+nginxSecret: nginx-secret-certv
+commonConfigmap: cm-certv

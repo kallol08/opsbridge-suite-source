@@ -1,0 +1,211 @@
+# Copyright 2023 Open Text.
+
+# The only warranties for products and services of Open Text and its affiliates
+# and licensors ("Open Text") are as may be set forth in the express warranty
+# statements accompanying such products and services. Nothing herein should be
+# construed as constituting an additional warranty. Open Text shall not be
+# liable for technical or editorial errors or omissions contained herein. The
+# information contained herein is subject to change without notice.
+
+itomcontentjob:
+  image: itom-opsbridge-content-administration-job
+  imageTag: 24.2-043
+  #FQDN of Data Administration Service. Incase of external COSO, use externally accessible hostname/FQDN
+  diadminHost: itom-di-administration-svc
+  #Data Administration ClusterIP port. Incase of external COSO, use externally accessible nodeport
+  diadminPort: 18443
+  #FQDN for bvd-www service. Incase of external BVD, use externally accessible hostname/FQDN
+  bvdHost: bvd-www
+  #BVD ClusterIP port. Incase of external BVD, provide ingress port
+  bvdPort: 4000
+  #FQDN for bvd-explore service. Incase of external BVD, use externally accessible hostname/FQDN
+  bvdExploreHost: bvd-explore
+  #BVD ClusterIP port. Incase of external BVD, provide ingress port
+  bvdExplorePort: 4000
+  #FQDN for Node Resolver service. 
+  nrHost: itom-opsb-node-resolver-svc
+  #Port for Node Resolver
+  nrPort: 9999
+  #FQDN for Content Management service.
+  contentManagementHost: itom-opsb-content-manager-svc
+  #Port for Content Management
+  contentManagementPort: 9000
+  #FQDN for StaticFiles service.
+  staticFilesHost: itom-opsb-resource-bundler-svc
+  #Port for StaticFiles
+  staticFilesPort: 9443
+  # OBM retry count ENDPOINT_OBM_CHECK_RETRIES
+  obmCheckReties: 60
+  #ENDPOINT_OBM_CHECK_INTERVAL_MINS
+  obmCheckIntervalMins: 2
+  omisvc: omi
+  omiport: 443
+  ucmdbsvc: itom-ucmdb-svc
+  ucmdbport: 8443
+  resources:
+    limits:
+      cpu: "1"
+      memory: "1024Mi"
+    requests:
+      cpu: "100m"
+      memory: "50Mi"
+  config:
+    diAdminServicePort: 8443
+    entitySchemaEnabled: true
+    admin:
+      replicaCount: 1
+deployment:
+  rbac:
+    serviceAccount: itom-opsb-content-job-sa
+global:
+  cms:
+    externalOBM: false
+    udHostname:
+    port: 8443
+  services:
+# User must uncomment the capabilities they want to deploy and comment the ones they do no want to deploy
+    automaticEventCorrelation:
+#      deploy: true
+      foo: bar
+    stakeholderDashboard:
+#      deploy: true
+      foo: bar
+    obm:
+#      deploy: true
+      foo: bar
+    hyperscaleObservability:
+#      deploy: true
+      foo: bar
+    agentlessMonitoring:
+#      deploy: true
+      foo: bar
+    anomalyDetection:
+#      deploy: true
+      foo: bar
+    syntheticMonitoring:
+#      deploy: true                           # Enable when configuration synchronization is required across APM and Opsbridge Suite
+      foo: bar
+    opticReporting:
+#     deploy: true
+    opticDataLake:
+#     deploy: false                            # Uncomment the parameter when using Shared Optic Data Lake while installing HyperscaleObservability or AutomaticEventCorrelation or OpticReporting capabilities
+      externalOpticDataLake:
+        externalAccessHost:                     # External Access Host of the providing deployment
+        externalAccessPort:                     # Ingress Controller Port
+        integrationUser:                        # IDM Integration User of the providing deployment
+        integrationPasswordKey:  # [DO NOT CHANGE] IDM Integration User password of the providing deployment
+        # User must use one of the below connection mechanisms if using Shared Optic Data Lake
+        connectUsingNamespace: # Connect using cross-namespace communication
+          namespace:                            # Namespace of the providing deployment
+        connectUsingExternalAccessHost: # Connect using External Access Host
+          diReceiverPort:                       # (External Host) Port of OPTIC Data Lake Ingestion Service
+          diAdminPort:                          # (External Host) Port of OPTIC Data Lake Administration Service
+          diDataAccessPort:                     # (External Host) Port of OPTIC Data Lake Data Access Service
+          diPulsarSslPort:                      # (External Host) Port of OPTIC Data Lake Pulsar SSL service
+          diPulsarWebPort:                      # (External Host) Port of OPTIC Data Lake Pulsar Web service
+  bvdProtocol:
+  bvdExploreProtocol:
+  bvdExploreHostname:
+  bvdExplorePort:
+  # RBAC
+  rbac:
+    serviceAccountCreate: true
+    roleCreate: true
+  nodeSelector: {}
+  idm:
+    transportUser:
+    transportUserKey:
+    adminUser:
+    adminUserKey:
+    integrationUser:
+    integrationUserKey:
+    internalPort: "18443"
+    # If IDM external port is not equal to global.externalAccessPort (default scenario),
+    # then we need to inject that value
+    externalAccessPort:
+    serviceName: "itom-idm-svc"
+  autoStartAgentMetricCollector:
+  externalAccessHost: 
+  externalAccessPort: 
+  busybox:
+    image: itom-busybox
+    imageTag: 1.29.0-005
+  toolsBase:
+    image: itom-tools-base
+    imageTag: 1.1.0-0011
+  securityContext:
+    user: "1999"
+    fsGroup: "1999"
+  persistence:
+    enabled: false
+    configVolumeClaim: 
+    logVolumeClaim: 
+    
+  capability:
+    isOpsBridgeCap: true
+    isEventAnalytics: false
+    isBVDonly: false
+
+  retryhandler:
+    retrycount: 10
+    retrydelay: 3
+    verticadelay: 5 # Setting the vertica table creation delay to 0 with the hope that tables are created as soon as request is sent to vertica
+    obmdelay: 1
+    obmretrycount: 15
+    contentdeploymentdelay: 0
+    versioncheckretrydelay: 30
+    versioncheckretrycount: 120
+
+  vaultAddr: "https://itom-vault.core:8200"
+
+  # If isDemo is true, this will allow use of ephemeral storage and other POC aspects.
+  isDemo: false
+
+  docker:
+    # set the global.docker.registry and orgName to your internal Docker registry/org
+    registry: localhost:5000
+    orgName: hpeswitom
+    imagePullSecret: ""
+    imagePullPolicy: IfNotPresent
+
+  securityContext:
+    user: "1999"
+    fsGroup: "1999"
+
+  # Global image references for vault
+  vaultRenew:
+    image: kubernetes-vault-renew
+    imageTag: 0.11.0-0011
+  vaultInit:
+    image: kubernetes-vault-init
+    imageTag: 0.11.0-0011
+  suiteLabel: Worker
+  suiteLabelValue: label
+  amc:
+    externalOBM: false
+    # FQDN of OBM
+    # If OBM is distributed 1GW, 1DPS, or if there's a load balancer mention in any one of the gateway or loadbalancer.
+    # This parameter must be set when externalOBM: true
+    # Ignored when externalOBM: false
+    obmHostname:
+    # The OBM server port used by components to access OBM and RTSM.If OBM is configured to be accessed as http, set this parameter to 80
+    # Ignored when externalOBM: false
+    port: 443
+    # The OBM username used by components to access OBM and RTSM. Provide the OBM username having permissions to upload content packs
+    # Ignored when externalOBM: false
+    user: admin
+    # The OBM user password key for user having content pack upload permissions
+    # Ignored when externalOBM: false
+    obmUserPassword: OBM_USER_PASSWORD_KEY  # [DO NOT CHANGE]
+    # The protocol used by components to access OBM and RTSM. If OBM is configured to be accessed http, set this parameter to http.
+    # Ignored when externalOBM: false
+  
+  monitoringService:
+    enableAutomaticViewDeployment: true              # [DO NOT CHANGE] Allows automatic deployment of UCMDB Views in Performance Dashboard for monitoring service based collectors
+    enableAutomaticCPDeployment: true                #[DO NOT CHANGE] Allows automatic deployment of OBM Content Packs  for monitoring service based collectors
+    enableAwsMonitor: 
+    enableGcpMonitor: 
+    enableAzureMonitor: 
+    enableKubernetesMonitor: 
+    enableVMwareMonitor: 
+    enablePageIdJson: true                           #Enable UIF page ID json for deprecated menu etries deletion 

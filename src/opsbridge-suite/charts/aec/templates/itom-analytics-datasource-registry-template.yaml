@@ -1,0 +1,168 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    deployment.microfocus.com/default-replica-count: "{{ .Values.replicaCount }}"
+    deployment.microfocus.com/runlevel: UP
+    reloader.stakater.com/auto: "true"
+  name: itom-analytics-datasource-registry
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- template "aec.defaultLabels" (dict "NameSuffix" "datasource-registry" "Version" .Values.aecImages.datasourceRegistry.imageTag "Component" "aec-data-source-registry" "HelmRelease" .Release.Name "Chart" .Chart) }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: itom-analytics-datasource-registry
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: itom-analytics-datasource-registry
+        itom.microfocus.com/capability: aiops
+      annotations:
+        {{- if .Values.global.vaultAppRole }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-{{ .Values.global.vaultAppRole }}
+        {{- else }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-default
+        {{- end }}
+        pod.boostport.com/vault-init-container: install
+    spec:
+      serviceAccountName: {{ .Values.deployment.rbac.serviceAccount }}
+      securityContext:
+        runAsUser: {{ .Values.global.securityContext.user }}
+        runAsGroup: {{ .Values.global.securityContext.fsGroup }}
+        fsGroup: {{ .Values.global.securityContext.fsGroup }}
+        runAsNonRoot: true
+      initContainers:
+      {{- include "helm-lib.containers.vaultInit" (dict "certNames" (printf "Common_Name:%s,Additional_SAN:itom-analytics-datasource-registry-svc/itom-analytics-datasource-registry-svc.%s.svc/itom-analytics-datasource-registry-svc.%s.svc.cluster.local" .Values.global.externalAccessHost .Release.Namespace .Release.Namespace) "Values" .Values) | nindent 6 }}
+
+      {{ include "aec.cacertBundler" . | nindent 6 }}
+
+      containers:
+      - name: datasource-registry
+        image: {{ coalesce .Values.aecImages.datasourceRegistry.dockerRegistry .Values.docker.registry .Values.global.docker.registry -}}
+        / {{- coalesce .Values.aecImages.datasourceRegistry.orgName .Values.docker.orgName .Values.global.docker.orgName -}}
+        / {{- .Values.aecImages.datasourceRegistry.image -}}
+        : {{- .Values.aecImages.datasourceRegistry.imageTag }}
+        imagePullPolicy: {{ .Values.global.docker.imagePullPolicy }}
+        resources:
+          requests:
+            memory: "400Mi"
+            cpu: "0.1"
+          limits:
+            memory: "500Mi"
+            cpu: "1.5"
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+        readinessProbe:
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          failureThreshold: 12
+          httpGet:
+            path: /dsregistry/v1/api/base/v1/ready
+            port: 8443
+            scheme: HTTPS
+        livenessProbe:
+          initialDelaySeconds: 180
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+          exec:
+            command:
+            - get.sh
+            - -k
+            - server
+            - api/sources
+        env:
+        - name: SERVICE_HEAP
+          value: "134217728" {{- /* 128 MiB */}}
+        - name: JAVA_OPTS
+          value: "-XX:MaxDirectMemorySize=4m -XX:MaxMetaspaceSize=150m -XX:MinMetaspaceFreeRatio=10 -Dio.netty.threadLocalDirectBufferSize=0"
+        {{- $dbType := (include "helm-lib.dbType" .) }}
+        - name: DB_TYPE
+          value: {{ $dbType }}
+        {{- if eq $dbType "oracle" }}
+        - name: DB_JDBC_URL
+          value: {{ include "aec.oracleConnectionStringJDBC" . | quote }}
+        {{- else if eq $dbType "postgresql" }}
+        - name: DB_JDBC_URL
+          value: {{ include "aec.postgresConnectionStringJDBC" . | quote }}
+        {{- end }}
+        - name: DB_USER
+          valueFrom:
+            configMapKeyRef:
+              name: itom-analytics-config
+              key: suite-db.user
+        - name: DB_PASSWORD_KEY
+          valueFrom:
+            configMapKeyRef:
+              name: itom-analytics-config
+              key: suite-db.pw_key
+        - name: ENABLE_UNAUTHENTICATED_METRICS
+          value: "true"
+        - name: SUITE_NAMESPACE
+          value: {{ .Release.Namespace }}
+        ports:
+        - containerPort: 8443
+          name: registry
+          protocol: TCP
+        volumeMounts:
+        {{- if (hasKey .Values.global "tlsTruststore") }}
+        - mountPath: /mnt/cm/additional_ca_certs
+          name: {{ .Values.externalCerts.volumeName }}
+          readOnly: true
+        {{- end }}
+        {{- if eq (include "helm-lib.dbType" .) "oracle" }}
+        - mountPath: /mnt/cm/oracle_wallet
+          name: oracle-wallet-storage
+          readOnly: true
+        {{- end }}
+        - name: vault-token
+          mountPath: /var/run/secrets/boostport.com
+        - name: tmp-storage
+          mountPath: /tmp
+        - name: conf-storage
+          mountPath: /service/conf
+          subPath: itom-analytics/datasource-registry
+        - name: log-storage
+          mountPath: /service/log
+          subPath: itom-analytics/datasource-registry
+        - name: data-storage
+          mountPath: /service/data
+        - name: db-storage
+          subPath: itom-analytics/datasource-registry
+          mountPath: /service/migration
+
+      {{- include "helm-lib.containers.vaultRenew" (dict "Values" .Values) | nindent 6 }}
+
+      {{- with ( coalesce .Values.nodeSelector .Values.global.nodeSelector ) }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+      - name: {{ .Values.cacerts.volumeName }}
+        emptyDir: {}
+      {{ include "aec.externalCertsVolume" . | indent 6 }}
+      {{- if eq (include "helm-lib.dbType" .) "oracle" }}
+      - name: oracle-wallet-storage
+        configMap:
+          name: {{ .Values.global.database.oracleWalletName }}
+          optional: true
+      {{- end }}
+      - name: vault-token
+        emptyDir: {}
+      - name: tmp-storage
+        emptyDir:
+          medium: Memory
+      - name: data-storage
+        emptyDir:
+          medium: Memory
+      - name: conf-storage
+        {{- include "helm-lib.pvcStorage" (dict "claim" "configVolumeClaim" "Release" .Release "Template" .Template "Values" .Values ) | nindent 8 }}
+      - name: log-storage
+        {{- include "helm-lib.pvcStorage" (dict "claim" "logVolumeClaim" "Release" .Release "Template" .Template "Values" .Values ) | nindent 8 }}
+      - name: db-storage
+        {{- include "helm-lib.pvcStorage" (dict "claim" "dbVolumeClaim" "Release" .Release "Template" .Template "Values" .Values) | nindent 8 }}

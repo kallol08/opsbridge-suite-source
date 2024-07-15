@@ -1,0 +1,9 @@
+{
+  "topics": [
+    {
+      "name": "opr_config_store_update_event_topic",
+      "max-mem-percentage": 20,
+      "memshares": 1
+    }
+  ]
+}

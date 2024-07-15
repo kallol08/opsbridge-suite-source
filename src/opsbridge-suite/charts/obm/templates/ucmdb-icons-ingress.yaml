@@ -1,0 +1,27 @@
+{{- /* Copyright 2020-2023 Open Text */ -}}
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ucmdb-icons-ingress
+  namespace: {{ .Release.Namespace }}
+  labels:
+{{ include "obm.labels" (dict "name" "ucmdb-icons-ingress" "Release" .Release "Chart" .Chart "Values" .Values) | indent 4 }}
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    {{ include "obm.ingress.prefix" . }}/backend-protocol: "HTTPS"
+    {{ include "obm.ingress.prefix" . }}/rewrite-target: /topaz/icons/$1
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /odb/icons/(.*)
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ .Values.deployment.name }}
+            port:
+              number: 443
+{{- if .Values.global.setFqdnInIngress }}
+    host: {{ .Values.global.externalAccessHost }}
+{{- end }}

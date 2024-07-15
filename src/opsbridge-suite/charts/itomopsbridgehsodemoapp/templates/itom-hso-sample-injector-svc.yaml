@@ -1,0 +1,25 @@
+{{ if .Values.global.monitoringService.demoMode -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: itom-monitoring-hso-demo-app-svc
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: itom-monitoring-hso-demo-app
+    service: itom-monitoring-hso-demo-app-svc
+    app.kubernetes.io/name: itom-monitoring-hso-demo-app
+    app.kubernetes.io/managed-by: {{.Release.Name}}
+    app.kubernetes.io/version: {{ .Values.hsodemoapp.imageTag }}
+    itom.microfocus.com/capability: monitoringService
+    tier.itom.microfocus.com/backend: backend
+    itom.microfocus.com/description: HSO_Sample_Data_Injector
+spec:
+{{/*  #sessionAffinity: ClientIP*/}}
+  ipFamilyPolicy: PreferDualStack
+  ports:
+  - name: hsosample-http
+    port: 40006
+    targetPort: 40006
+  selector:
+    app: itom-monitoring-hso-demo-app
+{{- end }}

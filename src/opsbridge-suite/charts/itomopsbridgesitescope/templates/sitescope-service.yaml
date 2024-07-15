@@ -1,0 +1,32 @@
+{{- if (((.Values.global).agentlessMonitoring).enableSitescope) }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: itom-monitoring-sitescope-svc
+  labels:
+    app.kubernetes.io/name: itom-monitoring-sitescope
+    app.kubernetes.io/managed-by: {{ .Values.sitescope.managedby }}
+    app.kubernetes.io/version: {{ .Values.sitescope.imageTag }}
+    itom.microfocus.com/capability: {{ .Values.sitescope.capname }}
+    tier.itom.microfocus.com/backend: backend
+    tier.itom.microfocus.com/frontend: fronend
+    app: itom-monitoring-sitescope-app
+    service: itom-monitoring-sitescope-svc
+    
+spec:
+  ipFamilyPolicy: PreferDualStack
+  ports:
+  - port: 443
+    targetPort: 8443
+    protocol: TCP
+    name: sitescope
+  - port: 383
+    targetPort: 383
+    name: sitescope-oa
+  - port: 30005
+    targetPort: 30005
+    name: sitescope-dl
+  selector:
+    app: itom-monitoring-sitescope-app
+  type: ClusterIP
+{{- end }}

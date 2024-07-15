@@ -1,0 +1,98 @@
+{{ if .Values.global.services.obm.deploy }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  annotations:
+    deployment.microfocus.com/runlevel: UP
+  name: itom-omi-aec-integration-{{ randAlphaNum 5 | lower }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Name }}
+    app.kubernetes.io/name: itom-omi-aec-integration
+    app.kubernetes.io/version: {{.Values.internalIntegrationImages.itomOmiAecIntegration.imageTag }}
+    itom.microfocus.com/capability: opsbridge-suite
+    itom.microfocus.com/randomid: {{ uuidv4 }}
+    tier.itom.microfocus.com/backend: backend
+spec:
+  template:
+    metadata:
+      labels:
+        app: itom-omi-aec-integration
+        itom.microfocus.com/capability: internal-integration
+      annotations:
+        {{- if .Values.global.vaultAppRole }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-{{ .Values.global.vaultAppRole }}
+        {{- else }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-default
+        {{- end }}
+        pod.boostport.com/vault-init-container: install
+    spec:
+      serviceAccountName: {{ .Values.deployment.rbac.serviceAccount }}
+      restartPolicy: OnFailure
+      securityContext:
+        runAsUser: {{ .Values.global.securityContext.user }}
+        runAsGroup: {{ .Values.global.securityContext.fsGroup }}
+        fsGroup: {{ .Values.global.securityContext.fsGroup }}
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+      {{- include "helm-lib.containers.vaultInit" (dict "certNames" (printf "Common_Name:%s,Additional_SAN:%s" .Values.global.externalAccessHost .Values.global.externalAccessHost) "Values" .Values) | nindent 6 }}
+
+      containers:
+      - name: aec-configurator
+        image: {{ .Values.global.docker.registry }}/{{ .Values.global.docker.orgName }}/{{ .Values.internalIntegrationImages.itomOmiAecIntegration.image }}:{{ .Values.internalIntegrationImages.itomOmiAecIntegration.imageTag }}
+        imagePullPolicy: {{ .Values.global.docker.imagePullPolicy }}
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "0.1"
+          limits:
+            memory: "512Mi"
+            cpu: "1"
+        securityContext:
+          runAsUser: {{ .Values.global.securityContext.user }}
+          runAsGroup: {{ .Values.global.securityContext.fsGroup }}          
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        env:
+        - name: "EXTERNAL_URL"
+          value: "https://{{ .Values.global.externalAccessHost }}:{{ .Values.global.externalAccessPort }}"
+        - name: "ENABLE_RECEIVER"
+          value: "{{ .Values.global.aec.datasource.enablereceiver }}"
+        - name: "GODEBUG"
+          value: "x509ignoreCN=0"
+        - name: "UIF_CONTEXT_ROOT"
+          valueFrom:
+            configMapKeyRef:
+              name: bvd-config
+              key: bvd.exploreContextRoot
+              optional: true
+        volumeMounts:
+        - name: tmp-storage
+          mountPath: /tmp
+        - name: podinfo
+          mountPath: /etc/podinfo
+        - name: vault-token
+          mountPath: /var/run/secrets/boostport.com
+      {{- with ( coalesce .Values.nodeSelector .Values.global.nodeSelector ) }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+      - name: podinfo
+        downwardAPI:
+          items:
+            - path: "namespace"
+              fieldRef:
+                fieldPath: metadata.namespace
+      - name: vault-token
+        emptyDir: {}
+      - name: tmp-storage
+        emptyDir:
+          medium: Memory
+{{ end }}

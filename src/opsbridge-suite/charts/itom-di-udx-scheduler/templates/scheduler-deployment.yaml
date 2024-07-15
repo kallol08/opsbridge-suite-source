@@ -1,0 +1,683 @@
+{{/* # */}}
+{{/* # Copyright 2023 Open Text. */}}
+{{/* # */}}
+{{/* # The only warranties for products and services of Open Text and its affiliates and  */}}
+{{/* # licensors (“Open Text”) are as may be set forth in the express warranty statements  */}}
+{{/* # accompanying such products and services. Nothing herein should be construed as */}}
+{{/* # constituting an additional warranty. Open Text shall not be liable for technical or */}}
+{{/* # editorial errors or omissions contained herein. The information contained herein is  */}}
+{{/* # subject to change without notice. */}}
+{{/* # */}}
+{{/* # Except as specifically indicated otherwise, this document contains confidential  */}}
+{{/* # information and a valid license is required for possession, use or copying. If this work  */}}
+{{/* # is provided to the U.S. Government, consistent with FAR 12.211 and 12.212, Commercial Computer  */}}
+{{/* # Software, Computer Software Documentation, and Technical Data for Commercial Items are licensed to */}}
+{{/* # the U.S. Government under vendor’s standard commercial license. */}}
+{{/* # */}}
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: itom-di-scheduler-udx
+  namespace: {{ .Release.namespace }}
+  labels:
+    app: itom-di-scheduler-udx
+    chart: {{ template "scheduler.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+    component: {{ .Values.scheduler.component }}
+    cluster: {{ template "scheduler.fullname" . }}
+    app.kubernetes.io/name:  {{ template "scheduler.fullname" . }}
+    app.kubernetes.io/managed-by: {{.Release.Name}}
+    app.kubernetes.io/version: {{.Chart.Version}}
+    itom.microfocus.com/capability: itom-data-ingestion
+  annotations:
+    deployment.microfocus.com/default-replica-count: "1"
+    deployment.microfocus.com/runlevel: UP
+    {{- if .Values.global.tlsTruststore }}
+    configmap.reloader.stakater.com/reload: "{{ .Values.global.tlsTruststore }}"
+    {{- end }}
+    {{- if (((((.Values.global).di).pulsar).client).tenantAdminSecret) }}
+    secret.reloader.stakater.com/reload: "{{ .Values.global.di.pulsar.client.tenantAdminSecret }}"
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      app: itom-di-scheduler-udx
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app: itom-di-scheduler-udx
+        release: {{ .Release.Name }}
+        component: {{ .Values.scheduler.component }}
+        cluster: {{ template "scheduler.fullname" . }}
+        app.kubernetes.io/name:  {{ template "scheduler.fullname" . }}
+        app.kubernetes.io/managed-by: {{.Release.Name}}
+        app.kubernetes.io/version: {{.Chart.Version}}
+        itom.microfocus.com/capability: itom-data-ingestion
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/scheduler-configmap.yaml") . | sha256sum }}
+        prometheus.io/port: "8443"
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/metrics"
+      {{- if .Values.global.vaultAppRole }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-{{ .Values.global.vaultAppRole }}
+      {{- else }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-default
+      {{- end }}
+        pod.boostport.com/vault-init-container: install
+    spec:      
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: {{ .Values.global.securityContext.user }}
+        runAsGroup: {{ .Values.global.securityContext.fsGroup }}
+        fsGroup: {{ .Values.global.securityContext.fsGroup }}      
+        seccompProfile:
+          type: RuntimeDefault      
+    {{- with ( coalesce .Values.nodeSelector .Values.global.nodeSelector ) }}
+      nodeSelector:
+        {{ toYaml . }}
+    {{- end }}
+    {{- if .Values.scheduler.tolerations }}
+      tolerations:
+{{ toYaml .Values.scheduler.tolerations | indent 8 }}
+    {{- end }}
+    
+      serviceAccount: {{ .Values.deployment.rbac.serviceAccount | default "itom-di-scheduler-sa" }}
+      serviceAccountName: {{ .Values.deployment.rbac.serviceAccount | default "itom-di-scheduler-sa" }}
+    
+      initContainers:
+      {{- include "helm-lib.waitForVault" . | nindent 6 }}
+      - name: waitfor-vertica-service
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: {{ .Values.global.securityContext.user }}
+          runAsGroup: {{ .Values.global.securityContext.fsGroup }}
+          allowPrivilegeEscalation: false
+          seccompProfile:
+            type: RuntimeDefault
+          capabilities:
+            drop:
+            - ALL
+        {{- if (eq (.Values.global.vertica.embedded | toString) "true") }}
+        {{- $vh := "itom-di-vertica-svc" }}
+        {{- $vp := "5444" -}}
+        {{- $fvnode := "itom-di-vertica-svc" }}
+        image: {{ .Values.global.docker.registry }}/{{ .Values.global.docker.orgName }}/{{ .Values.global.toolsBase.image }}:{{ .Values.global.toolsBase.imageTag }}
+        imagePullPolicy: {{ .Values.global.docker.imagePullPolicy }}
+        command: [ "sh", "-c", "until nc -z {{$fvnode}} {{$vp}} -w 5 ; do echo waiting for {{$fvnode}}:{{$vp}}...; sleep 5; done; exit 0"]
+        resources:
+          {{- include "scheduler.initContainers.resources" . | nindent 10 }}
+        {{- else -}}
+        {{- $vh := .Values.global.vertica.host }}
+        {{- $vp := .Values.global.vertica.port }}
+        image: {{ .Values.global.docker.registry }}/{{ .Values.global.docker.orgName }}/{{ .Values.global.toolsBase.image }}:{{ .Values.global.toolsBase.imageTag }}
+        imagePullPolicy: {{ .Values.global.docker.imagePullPolicy }}
+        command: [ "sh", "-c", "cmd=''; vh_local={{$vh}}; vp_local={{$vp}}; for i in $(echo $vh_local | sed 's/,/ /g' | awk '{$1=$1};1'); do cmd=$(echo $cmd '|| nc -z '$i' '$vp_local' -w 5 '); done; cmd=${cmd:3}; echo 'command is : '$cmd''; until eval $(echo $cmd); do echo 'waiting for '$vh_local' with port '$vp_local' ... '; sleep 5; done; exit 0;"]
+        resources:
+          {{- include "scheduler.initContainers.resources" . | nindent 10 }}
+        {{- end }}
+     
+      {{- $schchartname := (include "scheduler.fullname" .) }}
+      {{- $schcompname := (include "sch.component.name" .) }}
+      {{- $certNames := printf "%s-%s" $schchartname $schcompname -}}
+      {{- include "helm-lib.containers.vaultInit" (dict "certNames" $certNames "Values" .Values) | nindent 6 }}
+      terminationGracePeriodSeconds: 90
+      containers:
+      {{- include "helm-lib.containers.vaultRenew" (dict "Values" .Values) | nindent 6 }}
+      - name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        image: {{ .Values.global.docker.registry }}/{{ .Values.global.docker.orgName }}/{{ .Values.scheduler.image }}:{{ .Values.scheduler.imageTag }}
+        imagePullPolicy: {{ .Values.global.docker.imagePullPolicy }}
+      {{- if .Values.scheduler.resources }}
+        resources:
+{{ toYaml .Values.scheduler.resources | indent 10 }}
+      {{- end }}
+      {{- if not .Values.global.vertica.password }}
+        command: ["sh", "-c"]
+        args:
+        - >-
+          /entrypoint.sh
+      {{- end }}
+        ports:
+          - containerPort: 8443
+        volumeMounts:
+        - name: vault-token
+          mountPath: /var/run/secrets/boostport.com
+        - name: secret-volume
+          mountPath: /mnt/itom/scheduler/certs
+        - name: scheduler-log-vol
+          mountPath: /mnt/itom/scheduler/log
+        - name: cm-logback
+          mountPath: /simplifiedscheduler/conf-local/
+        {{- if or .Values.global.apiClient.authorizedClientCAs .Values.scheduler.config.apiClient.authorizedClientCAs }}
+        - name: cm-client-certs-volume
+          mountPath: /mnt/itom/scheduler/api-client-cas/
+        {{- end }}
+        {{- if (((((.Values.global).di).pulsar).client).tenantAdminSecret) }}
+        - name: pulsar-client-cert-secret-volume
+          mountPath: /mnt/itom/scheduler/external-ca-signed-cert/pulsar-client
+        {{- end }}
+        envFrom:
+          - configMapRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+        env:
+        - name: SCHED_THREADS
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: threads
+        - name: SCHED_VERTICA_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: vertica.datasource.host
+        - name: SCHED_VERTICA_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: vertica.datasource.port
+        - name: SCHED_VERTICA_USER
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: vertica.datasource.username
+        - name: SCHED_VERTICA_DB
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: vertica.datasource.database
+        - name: SCHED_VERTICA_RESOURCE_POOL
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: vertica.datasource.resourcepool
+        - name: SCHED_VERTICA_PASSWORD_KEY
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: vertica.datasource.password.key
+        - name: SCHED_VERTICA_READONLY_USER
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: vertica.datasource.readonly.username
+        - name: SCHED_PULSAR_UDX_SCHEMA
+          value: "{{ template "scheduler.schema" . }}"
+        - name: SCHED_PULSAR_HOST
+          valueFrom:
+           configMapKeyRef:
+             name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+             key: pulsar.datasource.host
+        - name: SCHED_PULSAR_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: pulsar.datasource.port
+        - name: SCHED_ADMIN_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: administration.datasource.host
+        - name: SCHED_ADMIN_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: administration.datasource.port
+        - name: SCHED_PULSAR_ADMIN_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: pulsar.admin.datasource.host
+        - name: SCHED_PULSAR_ADMIN_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: pulsar.admin.datasource.port
+        - name: SCHED_VERTICA_IS_TLS_ENABLED
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: vertica.datasource.is.tls.enabled
+        - name: SCHED_VERTICA_TLS_MODE
+        {{- if .Values.scheduler.configData.env.SCHED_VERTICA_TLS_MODE}}
+          value: {{ .Values.scheduler.configData.env.SCHED_VERTICA_TLS_MODE }}
+        {{- else if (eq (.Values.global.vertica.tlsEnabled | toString) "true") }}
+          value: "server-strict"
+        {{- else if (eq (.Values.global.vertica.tlsEnabled | toString) "false") }}
+          value: "none"
+        {{- else }}
+          value: "none"
+        {{- end }}
+        - name: SCHEDULER_LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: scheduler.log.level
+        - name: UDX_LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: scheduler.udx.log.level
+        - name: SCHEDULER_ENABLE_PERFORMANCE_TEST
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: scheduler.enable.performance.test
+        - name: SCHEDULER_JDBC_OPT
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: scheduler.jdbc.opt
+        - name: JAVA_OPTS
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: scheduler.jvm.args
+        - name: SCHEDULER_EXPLICIT_STATEMENT_EXECUTE
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: scheduler.explicit.statement.execute
+        - name: SCHEDULER_ENABLE_RESTART_SCHEDULER_JOB
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: scheduler.enable.restart.scheduler.job
+        - name: SCHEDULER_MAX_MEMORY_USAGE
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: scheduler.max.memory.usage.percentage
+        - name: SCHEDULER_DATA_RETENTION_JOB_CRON_SCHEDULE
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: scheduler.data.retention.job.cron.schedule
+        - name: SCHEDULER_ENABLE_DATA_RETENTION_JOB
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: scheduler.enable.data.retention.job
+        - name: SCHEDULER_MAX_MINUTES_PAST_LAST_BATCH
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: scheduler.max.minutes.past.last.batch.update
+        - name: SCHEDULER_RESTART_TIME_INTERVAL_IN_HOURS
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: scheduler.restart.time.interval.in.hours
+        - name: SCHEDULER_PARSER_PARAMETERS
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: scheduler.parser.parameters
+        - name: SCHEDULER_CONFIGSERVER_HOSTNAME
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: scheduler.configserver.hostname
+        - name: SCHEDULER_CONFIGSERVER_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: scheduler.configserver.port
+        - name: SCHEDULER_CONFIGSERVER_CONNECTION_RETRY_DELAY_MS
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: scheduler.configserver.connection.retry.delay.ms
+        - name: SCHEDULER_CONFIGSERVER_CLIENT_HEART_BEAT
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: scheduler.configserver.client.heart.beat
+        - name: SCHEDULER_CONFIGSERVER_SERVER_HEART_BEAT
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: scheduler.configserver.server.heart.beat
+        - name: SCHEDULER_CONFIGSERVER_MESSAGE_BUFFER_SIZE_LIMIT_MB
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: scheduler.configserver.message.buffer.size.limit.mb
+        - name: SCHEDULER_MAX_ALLOWED_TENANTS
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: scheduler.max.allowed.tenants
+        - name: SCHEDULER_FRAME_DURATION
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: scheduler.frame.duration
+        - name: SCHEDULER_MULTITENANT_ENABLED
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: scheduler.multitenancy.enabled
+        - name: AVRO_SCHEMA_EVOLUTION_ENABLED
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: scheduler.avro.schema.evolution.enabled
+        - name: SCHEDULER_UDX_PULSAR_CLIENT_CLEANUP
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: scheduler.udx.pulsar.client.cleanup
+        - name: SCHEDULER_UDX_PULSAR_CLIENT_CLEANUP_THRESHOLD
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: scheduler.udx.pulsar.client.cleanup.threshold
+        - name: SCHEDULER_LANE_WORKER_CONNECTION_CLOSE_THRESHOLD
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: scheduler.lane.worker.connection.close.threshold
+        - name: SCHEDULER_VDB_CONNECTION_CLOSE_THRESHOLD
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: scheduler.vdb.connection.close.threshold
+        - name: SCHEDULER_ALIVE_CHECK_TIME_INTERVAL_SECONDS
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: scheduler.alive.check.time.interval.seconds
+        - name: PULSAR_TOPIC_PARTITION_AUTO_REFRESH_ENABLED
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: scheduler.pulsar.topic.partition.auto.refresh
+        - name: SCHED_HISTORY_RETENTION
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: scheduler.retention
+        - name: SCHED_PULSAR_RECEIVER_QUEUE_SIZE
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: receiverQueue.size
+        - name: SCHED_BATCH_DURATION
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: batch.duration
+        - name: SCHED_BATCH_DURATION_UNITS
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: batch.units
+        - name: SCHED_COPY_READ_TIMEOUT
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: copyRead.timeout
+        - name: SCHED_COPY_READ_TIMEOUT_UNITS
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: copyRead.units
+        - name: PULSAR_TENANT
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: pulsar.tenant
+        - name: PULSAR_NAMESPACE
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: pulsar.namespace
+        - name: SCHED_HEARTBEAT_TIMEOUT
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: heartbeat.timeout
+        - name: DI_TENANT
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: di.tenant
+        - name: DI_DEPLOYMENT
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: di.deployment
+        - name: FAILED_EVENT_RETRY_DELAY_MILLIS
+          valueFrom:
+            configMapKeyRef:
+             name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+             key: scheduler.failed.event.retry.delay.millis
+        - name: FAILED_EVENT_INITIAL_DELAY_MILLIS
+          valueFrom:
+            configMapKeyRef:
+             name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+             key: scheduler.failed.event.initial.delay.millis
+        - name: PULSAR_BROKER_SERVICE_PORT
+          valueFrom:
+            configMapKeyRef:
+             name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+             key: pulsar.broker.service.port
+        - name: PULSAR_BROKER_SERVICE_PORT_TLS
+          valueFrom:
+            configMapKeyRef:
+             name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+             key: pulsar.broker.service.port.tls
+        - name: PULSAR_WEB_SERVICE_PORT
+          valueFrom:
+            configMapKeyRef:
+             name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+             key: pulsar.web.service.port
+        - name: PULSAR_WEB_SERVICE_PORT_TLS
+          valueFrom:
+            configMapKeyRef:
+             name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+             key: pulsar.web.service.port.tls
+        - name: PULSAR_TLS_HOSTNAME_VERIFICATION
+          valueFrom:
+            configMapKeyRef:
+             name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+             key: pulsar.tls.hostname.verification
+        - name: PULSAR_SERVICE_NAME
+          valueFrom:
+            configMapKeyRef:
+             name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+             key: pulsar.service.name
+        - name: PULSAR_AUTH_CLASS
+          valueFrom:
+            configMapKeyRef:
+             name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+             key: pulsar.auth.class
+        - name: ENABLE_MESSAGE_ACKNOWLEDGEMENT
+          valueFrom:
+            configMapKeyRef:
+             name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+             key: pulsar.enable.message.acknowledgement
+        - name: SCHEDULER_LOAD_METHOD
+          valueFrom:
+            configMapKeyRef:
+             name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+             key: scheduler.load.method
+        - name: SCHEDULER_ENABLE_UDX_HAS_MESSAGE_CHECK
+          valueFrom:
+            configMapKeyRef:
+             name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+             key: scheduler.enable.udx.has.message.check
+        - name: SCHEDULER_ENABLE_FRAME_BACKLOG_CHECK
+          valueFrom:
+            configMapKeyRef:
+             name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+             key: scheduler.enable.frame.backlog.check
+        - name: SCHEDULER_UDX_ACK_GROUPING_TIME_MILLIS
+          valueFrom:
+            configMapKeyRef:
+             name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+             key: scheduler.udx.ack.grouping.time.millis
+        - name: SCHEDULER_UDX_MAX_MESSAGE_COUNT
+          valueFrom:
+            configMapKeyRef:
+             name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+             key: scheduler.udx.max.message.count
+        - name: SCHEDULER_UDX_TLS_HOSTNAME_VERIFICATION
+          valueFrom:
+            configMapKeyRef:
+             name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+             key: scheduler.udx.tls.hostname.verification
+        - name: SCHEDULER_UDX_MAX_STREAM_SIZE_BYTES
+          valueFrom:
+            configMapKeyRef:
+             name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+             key: scheduler.udx.max.stream.size.bytes
+        - name: SCHEDULER_STAGGERED_SLEEP_DURATION_MILLIS
+          valueFrom:
+            configMapKeyRef:
+             name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+             key: scheduler.staggered.sleep.duration.millis
+        - name: SCHEDULER_VERSION
+          valueFrom:
+            configMapKeyRef:
+             name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+             key: scheduler.version
+        - name: SCHEDULER_SUPPORTED_UDX_RPM_VERSIONS
+          valueFrom:
+            configMapKeyRef:
+             name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+             key: scheduler.supported.udx.rpm.versions
+        - name: ENABLE_COMPATIBLE_UDX_VERSION_CHECK
+          valueFrom:
+            configMapKeyRef:
+             name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+             key: scheduler.enable.rpm.version.check             
+        - name: SCHEDULER_SUPPORTED_VERTICA_VERSIONS
+          valueFrom:
+            configMapKeyRef:
+             name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+             key: scheduler.supported.vertica.versions
+        - name: SCHEDULER_ENABLE_MICROBATCH_BACKLOG_CHECK
+          valueFrom:
+            configMapKeyRef:
+             name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+             key: scheduler.enable.microbatch.backlog.check
+        - name: SCHEDULER_ENABLE_SUBSCRIPTION_CLEANER
+          valueFrom:
+            configMapKeyRef:
+             name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+             key: scheduler.enable.subscription.cleaner
+        - name: SCHEDULER_ENABLE_SHARED_VERTICA
+          valueFrom:
+            configMapKeyRef:
+             name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+             key: scheduler.enable.shared.vertica
+        - name: SCHEDULER_LOAD_FACTOR
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: scheduler.load.factor
+        - name: SCHEDULER_PULSAR_TENANT_PROVIDER_NAME
+          valueFrom:
+            configMapKeyRef:
+             name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+             key: scheduler.pulsar.tenant.provider.name
+        - name: LOGGING_FROM_CONFIGMAP
+          valueFrom:
+            configMapKeyRef:
+             name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+             key: scheduler.logconfig.from.configmap
+  {{- if .Values.scheduler.configData.scheduler.logConfigFromConfigmap }}
+        - name: LOG_TO_FILE
+          valueFrom:
+            configMapKeyRef:
+             name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+             key: scheduler.logconfig.log.to.file
+  {{- end }}
+        - name: SCHEDULER_SERVER_TLS_ENABLED_PROTOCOLS
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: scheduler.server.tls.enabled.protocols
+        - name: SCHEDULER_CONSTANT_SLEEP_DURATION_MILLIS
+          valueFrom:
+            configMapKeyRef:
+             name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+             key: scheduler.constant.sleep.duration.milliseconds
+        - name: MINIMUM_MICROBATCH_DURATION_IN_MILLISECONDS
+          valueFrom:
+            configMapKeyRef:
+             name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+             key: scheduler.minimum.microbatch.duration.milliseconds
+        - name: SCHEDULER_ENABLE_READ_TIMEOUT_RESILIENCY
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: scheduler.readtimeout.resiliency.enable
+        - name: SCHEDULER_READ_TIMEOUT_NOMESSAGE_READ_COPY_COUNT
+          valueFrom:
+            configMapKeyRef:
+              name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}"
+              key: scheduler.readtimeout.resiliency.nomsg.read.copy.count
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: CONTAINER_NAME
+          value: scheduler
+      volumes:
+        - name: scheduler-log-vol
+          {{- include "helm-lib.pvcStorage" (dict "claim" "logVolumeClaim" "Release" .Release "Template" .Template "Values" .Values ) | nindent 10 }}
+        - name: secret-volume
+          projected:
+            sources:
+            - secret:
+                name: scheduler-secret
+          {{- if .Values.global.tlsTruststore }}
+            - configMap:
+                name: {{ .Values.global.tlsTruststore | quote }}
+          {{- end }}
+        {{- if or .Values.global.apiClient.authorizedClientCAs .Values.scheduler.config.apiClient.authorizedClientCAs }}
+        - name: cm-client-certs-volume
+          projected:
+            sources:
+          {{- if .Values.scheduler.config.apiClient.authorizedClientCAs }}
+              - configMap:
+                  name: {{ .Values.scheduler.config.apiClient.authorizedClientCAs | quote }}
+          {{- else if .Values.global.apiClient.authorizedClientCAs }}
+              - configMap:
+                  name: {{ .Values.global.apiClient.authorizedClientCAs | quote }}
+          {{- end }}
+        {{- end }}       
+        {{- if (((((.Values.global).di).pulsar).client).tenantAdminSecret) }}
+        - name: pulsar-client-cert-secret-volume
+          projected:
+            sources:
+              - secret:
+                  name: {{ .Values.global.di.pulsar.client.tenantAdminSecret | quote }}
+        {{- end }}  
+        - name: vault-token
+          emptyDir: {}
+        - name: cm-logback
+          configMap:
+            name: scheduler-logback-cm
+    

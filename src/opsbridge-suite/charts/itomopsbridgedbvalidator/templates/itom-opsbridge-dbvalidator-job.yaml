@@ -1,0 +1,364 @@
+{{- if .Values.global.validateDbConnection }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: itom-opsb-db-connection-validator-job
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: itom-opsb-db-connection-validator-job
+  annotations:
+    "helm.sh/hook": "pre-install,pre-upgrade"
+    "helm.sh/hook-delete-policy": before-hook-creation
+    "helm.sh/hook-weight": "10"
+spec:
+  template:
+    metadata:
+      labels:
+        name: itom-opsb-db-connection-validator-job
+      annotations:
+        {{- if .Values.global.vaultAppRole }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-{{ .Values.global.vaultAppRole }}
+        {{- else }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-default
+        {{- end }}
+        pod.boostport.com/vault-init-container: install
+    spec:
+      serviceAccountName: {{ .Values.deployment.rbac.serviceAccount }}
+      restartPolicy: Never
+      securityContext:
+        runAsUser: {{ .Values.global.securityContext.user }}
+        runAsGroup: {{ .Values.global.securityContext.fsGroup }}
+        fsGroup: {{ .Values.global.securityContext.fsGroup }}
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: itom-opsb-db-connection-validator-job
+          image: {{ .Values.global.docker.registry }}/{{ .Values.global.docker.orgName }}/{{.Values.dbValidator.image }}:{{.Values.dbValidator.imageTag }}
+          imagePullPolicy: {{ .Values.global.docker.imagePullPolicy }}
+          volumeMounts:
+            - name: volume-tmp
+              mountPath: /tmp
+            - name: conf-storage
+              mountPath: /service/conf
+            - name: db-secrets
+              mountPath: /var/run/secrets/secrets-vol
+            - name: db-token
+              mountPath: /var/run/secrets/boostport.com
+            - name: vertica-secret
+              mountPath: /var/run/secrets/vertica-certificates
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+          resources:
+          {{ toYaml .Values.resources | nindent 12 }}
+          env:
+            - name: VALIDATION_JOB_ENABLED
+              value: {{.Values.global.validateDbConnection | quote}}
+            - name: PASSWORD_FORMAT
+              valueFrom:
+                secretKeyRef:
+                  key:  passwordFormat
+                  name: {{ .Values.global.dbvalidatorSecret | quote}}
+            - name: VERTICA_VALIDATION_DISABLED
+              valueFrom:
+                configMapKeyRef:
+                  name: {{.Values.global.dbvalidatorConfigMapName}}
+                  key: vertica.validationDisabled
+            - name: OBM_VALIDATION_DISABLED
+              valueFrom:
+                configMapKeyRef:
+                  name: {{.Values.global.dbvalidatorConfigMapName}}
+                  key: obm.validationDisabled
+            - name: BVD_VALIDATION_DISABLED
+              valueFrom:
+                configMapKeyRef:
+                  name: {{.Values.global.dbvalidatorConfigMapName}}
+                  key: bvd.validationDisabled
+            - name: AEC_VALIDATION_DISABLED
+              valueFrom:
+                configMapKeyRef:
+                  name: {{.Values.global.dbvalidatorConfigMapName}}
+                  key: aec.validationDisabled
+            - name: MONITORINGSNF_VALIDATION_DISABLED
+              valueFrom:
+                configMapKeyRef:
+                  name: {{.Values.global.dbvalidatorConfigMapName}}
+                  key: monitoringsnf.validationDisabled
+            - name: MONITORING_VALIDATION_DISABLED
+              valueFrom:
+                configMapKeyRef:
+                  name: {{.Values.global.dbvalidatorConfigMapName}}
+                  key: monitoring.validationDisabled
+            - name: NOMMETRICTRANSFORM_VALIDATION_DISABLED
+              valueFrom:
+                configMapKeyRef:
+                  name: {{.Values.global.dbvalidatorConfigMapName}}
+                  key: nommetricstransform.validationDisabled
+            - name: VERTICA_EMBEDDED
+              value: {{ .Values.global.vertica.embedded | quote }}
+
+            {{/* TODO: remove suite_name when finalizing */}}
+            {{- if eq .Values.global.initSecrets "opsbridge-suite-secret"}}
+            - name: SUITE_NAME
+              value: opsbridge
+            {{- else if eq .Values.global.initSecrets "opsb-x-secret" }}
+            - name: SUITE_NAME
+              value: onestack
+            {{- end }}
+
+            {{- if eq .Values.global.vertica.embedded false}}
+            - name: VERTICA_HOST
+              value: {{ .Values.global.vertica.host }}
+            - name: VERTICA_PORT
+              value: {{ .Values.global.vertica.port | quote }}
+            - name: VERTICA_DB
+              value: {{ .Values.global.vertica.db }}
+            - name: VERTICA_RW_USER
+              value: {{ .Values.global.vertica.rwuser }}
+            - name: VERTICA_RO_USER
+              value: {{ .Values.global.vertica.rouser }}
+            - name: VERTICA_TLS_ENABLED
+              value: {{ .Values.global.vertica.tlsEnabled | quote }}
+            - name: VERTICA_CA_CERTIFICATE
+              value: {{ .Values.global.vertica.cert | quote  }}
+            {{- if .Values.global.vertica.rouserkey }}
+            - name: VERTICA_RO_PASSWORD_KEY
+              valueFrom:
+                secretKeyRef:
+                  key: {{ .Values.global.vertica.rouserkey }}
+                  name: {{ .Values.global.dbvalidatorSecret | quote}}
+            {{- end }}
+            {{- if .Values.global.vertica.rwuserkey }}
+            - name: VERTICA_RW_PASSWORD_KEY
+              valueFrom:
+                secretKeyRef:
+                  key: {{ .Values.global.vertica.rwuserkey }}
+                  name: {{ .Values.global.dbvalidatorSecret | quote}}
+            {{ end }}
+            {{ end }}
+
+            - name: ORA_POSTGRES_EMBEDDED
+              value: {{ .Values.global.database.internal | quote }}
+            - name: ORA_POSTGRES_DBTYPE
+              value: {{ include "helm-lib.dbType" . | quote }}
+
+            {{- if eq .Values.global.database.internal false }}
+            - name: ORA_POSTGRES_HOST
+              value: {{ include "helm-lib.dbHost" . | quote }}
+            - name: ORA_POSTGRES_PORT
+              value: {{ include "helm-lib.dbPort" . | quote }}
+            - name: IDM_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: {{.Values.global.dbvalidatorConfigMapName}}
+                  key: idm.user
+            - name: AEC_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: {{.Values.global.dbvalidatorConfigMapName}}
+                  key: aec.user
+            - name: MONITORINGSNF_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: {{.Values.global.dbvalidatorConfigMapName}}
+                  key: monitoringsnf.user
+            - name: BVD_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: {{.Values.global.dbvalidatorConfigMapName}}
+                  key: bvd.user
+            - name: AUTOPASS_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: {{.Values.global.dbvalidatorConfigMapName}}
+                  key: autopass.user
+
+            - name: MONITORINGADMIN_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: {{.Values.global.dbvalidatorConfigMapName}}
+                  key: monitoringadmin.user
+
+            - name: CREDENTIALMANAGER_USER
+              valueFrom:
+                configMapKeyRef:
+                  key: credentialmanager.user
+                  name: {{.Values.global.dbvalidatorConfigMapName}}
+
+            - name: NOMMETRICTRANSFORM_USER
+              valueFrom:
+                configMapKeyRef:
+                  key: nommetricstransform.user
+                  name: {{.Values.global.dbvalidatorConfigMapName}}
+
+            - name: OBM_EVENT_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: {{.Values.global.dbvalidatorConfigMapName}}
+                  key: obm.eventuser
+            - name: OBM_MGMT_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: {{.Values.global.dbvalidatorConfigMapName}}
+                  key: obm.mgmtuser
+            - name: UCMDB_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: {{.Values.global.dbvalidatorConfigMapName}}
+                  key: ucmdb.user
+
+            - name: ORA_POSTGRES_TLS_ENABLED
+              value: {{ include "helm-lib.dbTlsEnabled" . | quote }}
+            - name: ORA_POSTGRES_CA_CERTIFICATE
+              value: {{ .Values.global.database.tlsCert | quote }}
+            - name: IDM_USER_PASSWORD_KEY
+              valueFrom:
+                configMapKeyRef:
+                  key: idm.passwordKey
+                  name: {{.Values.global.dbvalidatorConfigMapName}}
+            - name: AEC_USER_PASSWORD_KEY
+              valueFrom:
+                configMapKeyRef:
+                  key: aec.passwordKey
+                  name: {{.Values.global.dbvalidatorConfigMapName}}
+            - name: MONITORINGSNF_USER_PASSWORD_KEY
+              valueFrom:
+                configMapKeyRef:
+                  key: monitoringsnf.passwordKey
+                  name: {{.Values.global.dbvalidatorConfigMapName}}
+            - name: BVD_USER_PASSWORD_KEY
+              valueFrom:
+                configMapKeyRef:
+                  key: bvd.passwordKey
+                  name: {{.Values.global.dbvalidatorConfigMapName}}
+            - name: AUTOPASS_USER_PASSWORD_KEY
+              valueFrom:
+                configMapKeyRef:
+                  key: autopass.passwordKey
+                  name: {{.Values.global.dbvalidatorConfigMapName}}
+            - name: OBM_MGMT_USER_PASSWORD_KEY
+              valueFrom:
+                configMapKeyRef:
+                  key: obm.mgmt.passwordKey
+                  name: {{.Values.global.dbvalidatorConfigMapName}}
+            - name: OBM_EVENT_USER_PASSWORD_KEY
+              valueFrom:
+                configMapKeyRef:
+                  key: obm.event.passwordKey
+                  name: {{.Values.global.dbvalidatorConfigMapName}}
+            - name: RTSM_USER_PASSWORD_KEY
+              valueFrom:
+                configMapKeyRef:
+                  key: ucmdbserver.passwordKey
+                  name: {{.Values.global.dbvalidatorConfigMapName}}
+            - name: MONITORINGADMIN_USER_PASSWORD_KEY
+              valueFrom:
+                configMapKeyRef:
+                  name: {{.Values.global.dbvalidatorConfigMapName}}
+                  key: monitoringadmin.passwordKey
+            - name: CREDENTIALMANAGER_USER_PASSWORD_KEY
+              valueFrom:
+                configMapKeyRef:
+                  key: credentialmanager.passwordKey
+                  name: {{.Values.global.dbvalidatorConfigMapName}}
+            - name: NOMMETRICTRANSFORM_USER_PASSWORD_KEY
+              valueFrom:
+                configMapKeyRef:
+                  key: nommetricstransform.passwordKey
+                  name: {{.Values.global.dbvalidatorConfigMapName}}
+            {{- if eq .Values.global.database.type "oracle" }}
+            {{- if .Values.global.database.oracleSid }}
+            - name: ORACLE_SID
+              value: {{ include "helm-lib.dbOracleSid" . | quote }}
+            {{- end }}
+            {{- if .Values.global.database.oracleServiceName }}
+            - name: ORACLE_SERVICE_NAME
+              value: {{ include "helm-lib.dbOracleServiceName" . | quote }}
+            {{- end }}
+            {{- if .Values.global.database.oracleConnectionString }}
+            - name: ORACLE_CONNECTION_STRING
+              value: {{ include "helm-lib.dbOracleConnectionString" . | quote }}
+            {{- end }}
+            {{- else }}
+            - name: IDM_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: {{.Values.global.dbvalidatorConfigMapName}}
+                  key: idm.dbname
+            - name: AEC_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: {{.Values.global.dbvalidatorConfigMapName}}
+                  key: aec.dbname
+            - name: MONITORINGSNF_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: {{.Values.global.dbvalidatorConfigMapName}}
+                  key: monitoringsnf.dbname
+            - name: BVD_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: {{.Values.global.dbvalidatorConfigMapName}}
+                  key: bvd.dbname
+            - name: AUTOPASS_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: {{.Values.global.dbvalidatorConfigMapName}}
+                  key: autopass.dbname
+            - name: MONITORINGADMIN_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: {{.Values.global.dbvalidatorConfigMapName}}
+                  key: monitoringadmin.dbname
+
+            - name: CREDENTIALMANAGER_DB
+              valueFrom:
+                configMapKeyRef:
+                  key: credentialmanager.dbname
+                  name: {{.Values.global.dbvalidatorConfigMapName}}
+
+            - name: NOMMETRICTRANSFORM_DB
+              valueFrom:
+                configMapKeyRef:
+                  key: nommetricstransform.dbname
+                  name: {{.Values.global.dbvalidatorConfigMapName}}
+            - name: OBM_EVENT_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: {{.Values.global.dbvalidatorConfigMapName}}
+                  key: obm.eventdbname
+            - name: OBM_MGMT_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: {{.Values.global.dbvalidatorConfigMapName}}
+                  key: obm.mgmtdbname
+            - name: UCMDB_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: {{.Values.global.dbvalidatorConfigMapName}}
+                  key: ucmdb.dbname
+            {{ end }}
+      {{- end }}
+
+      nodeSelector: {}
+      volumes:
+        - name: conf-storage
+          emptyDir: {}
+        - name: volume-tmp
+          emptyDir: {}
+        - name: db-token
+          emptyDir: {}
+        - name: db-secrets
+          secret:
+            secretName: {{ .Values.global.dbvalidatorSecret }}
+        - name: vertica-secret
+          configMap:
+            name: {{ .Values.global.database.tlsTruststore}}
+  backoffLimit: 0
+
+  {{- end}}

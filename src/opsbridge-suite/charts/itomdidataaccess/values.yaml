@@ -1,0 +1,242 @@
+#
+# Copyright 2023 Open Text.
+#
+# The only warranties for products and services of Open Text and its affiliates and licensors (“Open Text”)
+# are as may be set forth in the express warranty statements accompanying such products and services.
+# Nothing herein should be construed as constituting an additional warranty. Open Text shall not be liable
+# for technical or editorial errors or omissions contained herein. The information contained herein is subject
+# to change without notice.
+#
+# Except as specifically indicated otherwise, this document contains confidential information and a valid
+# license is required for possession, use or copying. If this work is provided to the U.S. Government,
+# consistent with FAR 12.211 and 12.212, Commercial Computer Software, Computer Software
+# Documentation, and Technical Data for Commercial Items are licensed to the U.S. Government under
+# vendor’s standard commercial license.
+#
+# Default values for dp.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+didataaccess:
+  config:
+    vertica:
+      ingestionServiceName: "itom-di-metadata-server-svc"
+      ingestionServicePort: "8443"
+      datasourceDriverClassName: "com.vertica.jdbc.Driver"
+      datasourceConnectionTimeout: "60000"
+      connection:
+        maxReconnectAttemptOnFailureDuringStartup: 200
+        timeDelayBetweenRetriesDuringStartup: 3000
+
+    dataaccess:
+      jvmArgs: "-Xms512m -Xmx1024m -XX:+HeapDumpOnOutOfMemoryError  -Djdk.tls.maxCertificateChainLength=20 "
+      verticaIngestionTlsEnable: "true"
+      clientAuthEnable: "true"
+      systemLevelThrottle: "false"
+      permissibleRequestLimit: "-6000"
+      requestThrottleTime: "-1"
+      cacheSize: "1000"
+      throttleExpireTime: "1800"
+      apiClient:
+        authorizedClientCAs: ""
+      useExternalCASignedCerts: false
+      caSignedServerCertSecretName:
+      logConfigFromConfigmap: true
+      enableSecurityAudit: true
+      securityAuditVolumeClaim:
+      serverTlsEnabledProtocols: "TLSv1.2,TLSv1.3"
+
+    hikaricp:
+      connectionMaximumLifetime: "1800000"
+      idleSessionTimeOut: "3600s"
+      minimumIdleConnections: "2"
+      maximumPoolSize: "10"
+      connectionPoolName: "store_once_pool"
+
+    timezone: ""
+    replicaCount: 1
+    isNodePortEnabled: "true"
+    accessNodePort: "30003"
+    externalAccess: "ingress,nodeport"
+
+  probe:
+    startup:
+      enabled: true
+      initialDelaySeconds: 30
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 50
+      successThreshold: 1
+
+    liveness:
+      enabled: true
+      initialDelaySeconds: 1
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 5
+      successThreshold: 1
+
+    readiness:
+      enabled: true
+      initialDelaySeconds: 1
+      periodSeconds: 30
+      timeoutSeconds: 5
+      failureThreshold: 5
+      successThreshold: 1
+  idm:
+    tokenCacheExpiryTimeSeconds: "60"
+    authorizedRoles: "di_data_access"
+
+global:
+  topologySpreadConstraintsDefaults:
+    enabled: true
+    template:
+      maxSkew: 1
+      topologyKey: "topology.kubernetes.io/zone"
+      whenUnsatisfiable: ScheduleAnyway
+  expose:
+    ipConfig:
+      ipFamilyPolicy: PreferDualStack
+      ipFamilies:
+  cluster:
+    k8sProvider: cdf
+  di:
+    cloud:
+      externalDNS:
+        enabled: false
+      externalAccessHost:
+        dataAccess:
+    externalAccessHost:
+      dataAccess:
+    java:
+      tls:
+        ciphers:
+          recommended: "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_DHE_RSA_WITH_AES_128_GCM_SHA256,TLS_DHE_RSA_WITH_AES_256_GCM_SHA384,TLS_AES_256_GCM_SHA384,TLS_AES_128_GCM_SHA256"
+          optional: ""
+          useJDKDefault: false
+    dataaccess:
+      resourcepool: ""
+    logging:
+      useFile:
+  # persistence.enabled=true means that the PVCs are expected to be dynamically created by the composition chart.
+  # Otherwise, persistence.configVolumeClaim is a persistent volume claim for storing configuration files.
+  # persistence.logVolumeClaim is a persistent volume claim for storing log files.
+  # If all of the above are undefined, then temporary ephemeral storage will be created (only if isDemo=true)
+  persistence:
+    enabled: false
+    configVolumeClaim:
+    logVolumeClaim:
+
+  # For custom client CAs. authorizedClientCAs should be the name of a configMap which contains the certs.
+  apiClient:
+    authorizedClientCAs:
+
+  #For nginx custom CA signed certificates. secretName should be the name of the secret containing the cert and key
+  nginx:
+    secretName:
+
+  # RBAC 
+  rbac:
+    serviceAccountCreate: true
+    roleCreate: true
+
+  nodeSelector: {}
+  setFqdnInIngress: true
+  # REQUIRED: The externalAccessHost is the end-point for the service
+  externalAccessHost:
+
+  # For custom server CAs (incl. for Vertica). tlsTruststore should be the name of a configMap which contains the certs.
+  tlsTruststore:
+
+  # if isDemo is true, this will allow use of ephemeral storage and other POC aspects.
+  isDemo: false
+
+  # This Kafka chart depends on Zookeeper.  And by default it will deploy a new Zookeeper
+  # instance each time this chart is deployed.
+  # If instance.zookeeper is defined, then Kafka will reuse a Zookeeper instance which
+  # is already running, instead of deploying a new instance.
+  # The value of instance.zookeeper should match the Helm Release Name (i.e. "cold-fish")
+  # associated with the ZooKeeper instance to be reused.
+  instance:
+    kafka:
+
+  #All vertica related details are being moved into global so that it can be used across charts
+  # rwuser: Read Write vertica User
+  # rouser: Read Only user. Used only by Data Access
+  # rwuserkey: Password for Read Write vertica user
+  # rouserkey: password for Read only vertica user
+  vertica:
+    embedded: false
+    host: 
+    rwuser: 
+    rwuserkey: ITOMDI_DBA_PASSWORD_KEY
+    rouser: 
+    rouserkey: ITOMDI_DBA_PASSWORD_KEY
+    db: 
+    port: 
+    tlsEnabled: "true"
+
+  docker:
+    # set the global.docker.registry and orgName to your internal Docker registry/org
+    registry: localhost:5000
+    orgName: 
+    imagePullSecret: ""
+    imagePullPolicy: IfNotPresent
+
+  securityContext:
+    user: "1999"
+    fsGroup: "1999"
+
+  # Global image references
+  vaultRenew:
+    image: kubernetes-vault-renew
+    imageTag: 0.10.0-0019
+  vaultInit:
+    image: kubernetes-vault-init
+    imageTag: 0.10.0-0019
+  toolsBase:
+    image: itom-tools-base
+    imageTag: 1.1.0-0018
+
+  idm:
+    idmServiceUrl: "https://itom-idm-svc:18443/idm-service"
+  fluentbit:
+    fluentbitSelector:
+      labelName: "deployment.microfocus.com/fluentbit-config"
+      labelValue: "true"
+     
+resources:
+  limits:
+    cpu: "2"
+    memory: "2048Mi"
+  requests:
+    cpu: "0.5"
+    memory: "512Mi"
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: "app"
+                operator: In
+                values:
+                  - itom-di-data-access
+          topologyKey: "kubernetes.io/hostname"
+
+nodeSelector: {}
+deployment:
+  rbac:
+    serviceAccount: ""
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: "topology.kubernetes.io/zone"
+      whenUnsatisfiable: ScheduleAnyway
+#####################
+# Image definitions
+####################
+
+dataAccess:
+  image: itom-data-ingestion-data-access
+  imageTag: 2.12.1-5

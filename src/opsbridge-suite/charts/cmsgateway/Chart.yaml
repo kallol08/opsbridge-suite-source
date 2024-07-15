@@ -1,0 +1,9 @@
+apiVersion: v2
+appVersion: 11.8.2.146
+dependencies:
+- name: cmshelmlib
+  repository: ""
+  version: 1.10.2-10
+description: OpenText Configuration Management System - Gateway
+name: cmsgateway
+version: 1.10.2-79

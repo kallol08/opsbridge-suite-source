@@ -1,0 +1,46 @@
+
+global:
+  docker:
+    registry:
+    orgName:
+    imagePullSecret:
+    imagePullPolicy:
+
+  # [DO NOT CHANGE] Global image references.
+  vaultRenew:
+    image:
+    imageTag:
+  vaultInit:
+    image:
+    imageTag:
+
+  securityContext:
+    user:
+    fsGroup:
+
+  database:
+    internal:
+    admin:
+
+  rbac:
+    serviceAccountCreate: true
+    roleCreate: true
+
+deployment:
+  # Deployment (subchart) specific values for DB parameters.  But all should be empty values in this file. Needed for helm-lib
+  database:
+    internal:
+    dbType:
+    dbHost:
+    dbPort:
+    dbTlsEnabled:
+    dbOracleSid:
+    dbOracleConnectionString:
+
+  # RBAC
+  rbac:
+    serviceAccount: itom-autocreate-databases-sa
+autoCreate:
+  image: itom-autocreate-databases
+  imageTag: 2.3.0-52
+  configMapName: ""

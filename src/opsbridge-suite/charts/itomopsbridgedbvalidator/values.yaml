@@ -1,0 +1,73 @@
+# Default values for itom-helm-dbvalidatior.
+global:
+  docker:
+    registry: localhost:5000
+    orgName: hpeswitom
+    imagePullSecret: ""
+    imagePullPolicy: IfNotPresent
+
+  validateDbConnection: true
+  initSecrets: ""
+  dbvalidatorSecret: "itom-opsb-db-connection-validator-secret"
+  dbvalidatorConfigMapName: "database-connection-validator-cm"
+
+  securityContext:
+    user: "1999"
+    fsGroup: "1999"
+
+  database:
+    internal: true
+
+  vertica:
+    embedded: true
+    rwuserkey: "ITOMDI_DBA_PASSWORD_KEY"
+    rouserkey: "ITOMDI_DBA_PASSWORD_KEY"
+
+  secrets:
+
+    #Verica DBA and RO User passwords
+    ITOMDI_DBA_PASSWORD_KEY:
+    ITOMDI_RO_USER_PASSWORD_KEY:
+
+    #Postgres/Oracle Db Passwords for different users
+    AUTOPASS_DB_USER_PASSWORD_KEY:
+    BVD_DB_USER_PASSWORD_KEY:
+    AEC_DB_USER_PASSWORD_KEY:
+    CM_DB_PASSWD_KEY:
+    IDM_DB_USER_PASSWORD_KEY:
+    MA_DB_USER_PASSWORD_KEY:
+    OBM_DB_USER_PASSWORD_KEY:
+    SNF_DB_USER_PASSWORD_KEY:
+    RTSM_DB_USER_PASSWORD_KEY:
+
+
+  rbac:
+    serviceAccountCreate: true
+    roleCreate: true
+
+
+deployment:
+  # Deployment (subchart) specific values for DB parameters.  But all should be empty values in this file. Needed for helm-lib
+  database:
+    internal:
+    dbType:
+    dbHost:
+    dbPort:
+    dbTlsEnabled:
+    dbOracleSid:
+    dbOracleConnectionString:
+
+# RBAC
+  rbac:
+    serviceAccount: dbvalidator-sa
+dbValidator:
+  image: itom-opsbridge-dbvalidator
+  imageTag: 2.8.0-2
+
+resources:
+  requests:
+    cpu: "100m"
+    memory: "64Mi"
+  limits:
+    cpu: "250m"
+    memory: "256Mi"

@@ -1,0 +1,34 @@
+{{- if (not .Values.params.exploreContextRoot) }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:
+    ingress.kubernetes.io/configuration-snippet: |
+      rewrite /dashboard(/|$)(.*) https://{{ .Values.global.externalAccessHost }}:{{ .Values.global.externalAccessPort }}/ui$1$2 permanent;
+    kubernetes.io/ingress.class: "nginx"
+  labels:
+    app: bvd
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: bvd-ingress
+    app.kubernetes.io/version: {{ .Values.bvd.imageTag }}
+    itom.microfocus.com/capability: bvd
+    tier.itom.microfocus.com/ingress: ingress
+  name: uif-redirect
+  namespace: {{ .Release.Namespace }}
+spec:
+  rules:
+  {{- if .Values.global.setFqdnInIngress }}
+  - host: {{ .Values.global.externalAccessHost }}
+    http:
+  {{- else }}
+  - http:
+  {{- end }}
+      paths:
+      - backend:
+          service:
+            name: bvd-explore
+            port:
+              number: 4000
+        path: /dashboard
+        pathType: Exact
+{{- end }}

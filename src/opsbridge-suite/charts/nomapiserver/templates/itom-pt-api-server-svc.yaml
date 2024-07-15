@@ -1,0 +1,15 @@
+{{/*# Copyright 2023 Open Text.*/}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: itom-pt-api-server
+  labels:
+    name: itom-pt-api-server
+spec:
+  ports:
+    - port: 8443
+      protocol: TCP
+      name: api-server-https
+      targetPort: 8443
+  selector:
+    name: itom-pt-api-server

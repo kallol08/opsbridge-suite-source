@@ -1,0 +1,83 @@
+{{/*# Copyright 2023 Open Text.*/}}
+{{/*#*/}}
+{{/*#  The only warranties for products and services of Open Text and its affiliates and licensors (“Open Text”) are as may be set forth in the express warranty statements accompanying such products and services. Nothing herein should be construed as constituting an additional warranty. Open Text shall not be liable for technical or editorial errors or omissions contained herein. The information contained herein is subject to change without notice.*/}}
+{{ if .Values.global.isAgentMetricCollectorEnabled -}}
+{{ if and (.Capabilities.APIVersions.Has "monitoring.coreos.com/v1") .Values.global.prometheus.deployPrometheusConfig }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  labels:
+    app: itom-monitoring-oa-metric-collector-app
+    app.kubernetes.io/name: itom-monitoring-oa-metric-collector
+    itom.microfocus.com/capability: OA_Metric_Collector
+    {{- include "servicemonitor.labels" . | nindent 4 }}
+  name: itom-monitoring-oa-metric-collector
+  namespace: {{ .Release.Namespace }}
+spec:
+  endpoints:
+  - targetPort: 8080
+    interval: 20s
+    path: /metrics
+    scheme: https
+    tlsConfig:
+      ca:
+        configMap:
+          key: {{ include "helm-lib.getTlsCertNameFromRealmList" (dict "Values" .Values) }}
+          name: public-ca-certificates
+      cert:
+        secret:
+          key: server.crt
+          name: itom-monitoring-oa-metric-collector-metrics-client
+      insecureSkipVerify: false
+      keySecret:
+        key: server.key
+        name: itom-monitoring-oa-metric-collector-metrics-client
+      serverName: itom-monitoring-oa-metric-collector-svc
+    relabelings:
+    {{- include "servicemonitor.relabelings" . | nindent 4 }}
+  - targetPort: 41002
+    interval: 20s
+    path: /metrics
+    scheme: https
+    tlsConfig:
+      ca:
+        configMap:
+          key: {{ include "helm-lib.getTlsCertNameFromRealmList" (dict "Values" .Values) }}
+          name: public-ca-certificates
+      cert:
+        secret:
+          key: server.crt
+          name: itom-monitoring-oa-metric-collector-metrics-client
+      insecureSkipVerify: false
+      keySecret:
+        key: server.key
+        name: itom-monitoring-oa-metric-collector-metrics-client
+      serverName: itom-monitoring-oa-metric-collector-svc
+    relabelings:
+    {{- include "servicemonitor.relabelings" . | nindent 4 }}
+  - targetPort: 41001
+    interval: 20s
+    path: /metrics
+    scheme: https
+    tlsConfig:
+      ca:
+        configMap:
+          key: {{ include "helm-lib.getTlsCertNameFromRealmList" (dict "Values" .Values) }}
+          name: public-ca-certificates
+      cert:
+        secret:
+          key: server.crt
+          name: itom-monitoring-oa-metric-collector-metrics-client
+      insecureSkipVerify: false
+      keySecret:
+        key: server.key
+        name: itom-monitoring-oa-metric-collector-metrics-client
+      serverName: itom-monitoring-oa-metric-collector-svc
+    relabelings:
+    {{- include "servicemonitor.relabelings" . | nindent 4 }}
+  selector:
+    matchLabels:
+      app: itom-monitoring-oa-metric-collector-app
+  {{- include "servicemonitor.namespaceSelector" . | nindent 2 }}
+{{ end }}
+{{- end }}

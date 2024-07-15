@@ -1,0 +1,138 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    deployment.microfocus.com/default-replica-count: "1"
+    deployment.microfocus.com/runlevel: UP
+    reloader.stakater.com/auto: "true"
+  name: itom-analytics-text-clustering-server
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- template "aec.defaultLabels" (dict "NameSuffix" "text-clustering-server" "Version" .Values.aecImages.clusteringServer.imageTag "Component" "text-clustering" "HelmRelease" .Release.Name "Chart" .Chart) }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: itom-analytics-text-clustering-server
+  template:
+    metadata:
+      labels:
+        app: itom-analytics-text-clustering-server
+        itom.microfocus.com/capability: aiops
+      annotations:
+        {{- if .Values.global.vaultAppRole }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-{{ .Values.global.vaultAppRole }}
+        {{- else }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-default
+        {{- end }}
+        pod.boostport.com/vault-init-container: install
+    spec:
+      serviceAccountName: {{ .Values.deployment.rbac.serviceAccount }}
+      securityContext:
+        runAsUser: {{ .Values.global.securityContext.user }}
+        runAsGroup: {{ .Values.global.securityContext.fsGroup }}
+        fsGroup: {{ .Values.global.securityContext.fsGroup }}
+        runAsNonRoot: true
+      initContainers:
+      {{- include "helm-lib.containers.vaultInit" (dict "certNames" (printf "Common_Name:%s,Additional_SAN:itom-analytics-text-clustering-svc/itom-analytics-text-clustering-svc.%s.svc/itom-analytics-text-clustering-svc.%s.svc.cluster.local" .Values.global.externalAccessHost .Release.Namespace .Release.Namespace) "Values" .Values) | nindent 6 }}
+      {{ include "aec.cacertBundler" . | nindent 6 }}
+      {{ include "aec.waitForResourcePools" . | nindent 6 }}
+
+      containers:
+      - name: clustering-server
+        image: {{ coalesce .Values.aecImages.clusteringServer.dockerRegistry .Values.docker.registry .Values.global.docker.registry -}}
+        / {{- coalesce .Values.aecImages.clusteringServer.orgName .Values.docker.orgName .Values.global.docker.orgName -}}
+        / {{- .Values.aecImages.clusteringServer.image -}}
+        : {{- .Values.aecImages.clusteringServer.imageTag }}
+        imagePullPolicy: {{ .Values.global.docker.imagePullPolicy }}
+        resources:
+          requests:
+            memory: "500Mi"
+            cpu: "0.1"
+          limits:
+            memory: "1200Mi"
+            cpu: "3"
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+        env:
+        - name: "ITOM_ANALYTICS_SCHEMA"
+          value: "itom_analytics_
+                 {{- if hasKey .Values.global.di "tenant" }} {{- .Values.global.di.tenant -}} {{ else -}} provider {{- end }}_
+                 {{- if hasKey .Values.global.ea "deployment" }} {{- .Values.global.ea.deployment -}} {{ else -}} {{ .Values.global.di.deployment }} {{- end }}"
+        - name: "DI_DATA_SET_SCHEMA"
+          value: "mf_shared_{{ if hasKey .Values.global.di "tenant" }} {{- .Values.global.di.tenant -}} {{ else -}} provider {{- end }}_{{ .Values.global.di.deployment }}"
+        - name: "IS_VERTICA_EMBEDDED"
+          value: "{{ .Values.global.vertica.embedded }}"
+        - name: "EXTERNAL_VERTICA_HOSTNAMES"
+          value: {{ .Values.global.vertica.host }}
+        - name: "EXTERNAL_VERTICA_PORT"
+          value: "{{ .Values.global.vertica.port }}"
+        - name: "EXTERNAL_VERTICA_DB"
+          value: {{ .Values.global.vertica.db }}
+        - name: "EXTERNAL_VERTICA_USERNAME"
+          value: {{ .Values.global.vertica.rwuser }}
+        - name: "EXTERNAL_VERTICA_PASS_KEY"
+          value: {{ .Values.global.vertica.rwuserkey }}
+        - name: "AEC_BACKGROUND_POOL"
+          value: {{ include "aec.backgroundResourcepool" . | quote }}
+        - name: "EXTERNAL_VERTICA_TLS_MODE"
+          {{- if .Values.global.vertica.tlsEnabled }}
+          value: {{ .Values.deployment.vertica.tlsMode }}
+          {{- else }}
+          value: disable
+          {{- end }}
+        readinessProbe:
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+          exec:
+            command:
+            - /service/shlib/ping.sh
+            - readiness
+        livenessProbe:
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 6
+          exec:
+            command:
+            - /service/shlib/ping.sh
+            - liveness
+        volumeMounts:
+        {{- if (hasKey .Values.global "tlsTruststore") }}
+        - name: {{ .Values.externalCerts.volumeName }}
+          mountPath: /service/conf/vertica # base container path
+          readOnly: true
+        {{- end }}
+        - name: vault-token
+          mountPath: /var/run/secrets/boostport.com
+        - name: tmp-storage
+          mountPath: /tmp
+        - name: conf-storage
+          mountPath: /service/conf
+          subPath: itom-analytics/clustering-server
+        - name: log-storage
+          mountPath: /service/log
+          subPath: itom-analytics/clustering-server
+
+      {{- include "helm-lib.containers.vaultRenew" (dict "Values" .Values) | nindent 6 }}
+
+      {{- with ( coalesce .Values.nodeSelector .Values.global.nodeSelector ) }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+      {{ include "aec.externalCertsVolume" . | indent 6 }}
+      - name: vault-token
+        emptyDir: {}
+      - name: {{ .Values.cacerts.volumeName }}
+        emptyDir: {}
+      - name: tmp-storage
+        emptyDir:
+          medium: Memory
+      - name: conf-storage
+        {{- include "helm-lib.pvcStorage" (dict "claim" "configVolumeClaim" "Release" .Release "Template" .Template "Values" .Values ) | nindent 8 }}
+      - name: log-storage
+        {{- include "helm-lib.pvcStorage" (dict "claim" "logVolumeClaim" "Release" .Release "Template" .Template "Values" .Values ) | nindent 8 }}

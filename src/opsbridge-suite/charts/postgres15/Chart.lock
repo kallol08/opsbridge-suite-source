@@ -1,0 +1,6 @@
+dependencies:
+- name: helm-lib
+  repository: https://svsartifactory.swinfra.net/artifactory/itom-helm-charts-sandbox
+  version: 1.9.0-14
+digest: sha256:3f9470b16cefed39aaef9c859b741d5d2111fc11ef04a17874155fc7b42014bd
+generated: "2024-03-05T13:00:21.184813264Z"

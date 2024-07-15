@@ -1,0 +1,270 @@
+[{
+    "operation": "ADD",
+    "type": "role",
+    "attributes": {
+      "name": "bad1cad1-face-4b0e-861b-e2ab2631b1a8",
+      "displayName": "OBM Super Admin",
+      "description": "Indicates OBM super admin privileges.",
+      "application": "OBM",
+      "modifiable": false,
+      "deletable": false
+    },
+    "names": {
+      "organizationName": "Provider"
+    },
+    "associations": [{
+        "name": "Administrators",
+        "type": "group"
+      }
+    ]
+  }, {
+    "operation": "ADD",
+    "type": "role",
+    "attributes": {
+      "name": "SuperAdmin",
+      "displayName": "RTSM Super Admin",
+      "description": "Indicates RTSM super admin privileges.",
+      "application": "CMDB",
+      "modifiable": false,
+      "deletable": false
+    },
+    "names": {
+      "organizationName": "Provider"
+    },
+    "associations": [{
+        "name": "Administrators",
+        "type": "group"
+      }
+    ]
+  }, {
+    "operation": "ADD_OR_UPDATE",
+    "type": "role",
+    "names": {
+      "organizationName": "Provider"
+    },
+    "attributes": {
+      "name": "di_admin",
+      "displayName": "DI ADMIN",
+      "description": "DI Admin Role"
+    }
+  }, {
+    "operation": "ADD_OR_UPDATE",
+    "type": "role",
+    "names": {
+      "organizationName": "Provider"
+    },
+    "attributes": {
+      "name": "di_ingestion",
+      "displayName": "DI INGESTION",
+      "description": "DI Ingestion Role"
+    }
+  }, {
+    "operation": "ADD_OR_UPDATE",
+    "type": "role",
+    "names": {
+      "organizationName": "Provider"
+    },
+    "attributes": {
+      "name": "di_data_access",
+      "displayName": "DI DATA ACCESS",
+      "description": "DI Data Access Role"
+    }
+  }, {
+    "operation": "ADD_OR_UPDATE",
+    "type": "role",
+    "names": {
+      "organizationName": "Provider"
+    },
+    "attributes": {
+      "name": "s3_admin",
+      "displayName": "S3 Admin",
+      "description": "S3 Config API Access Admin Role"
+    }
+  }, {
+    "operation": "ADD_OR_UPDATE",
+    "type": "role",
+    "names": {
+      "organizationName": "Provider"
+    },
+    "attributes": {
+      "name": "nnm_dashboard_admin",
+      "displayName": "Dashboard APIs Admin",
+      "description": "Dashboard API Access Admin Role"
+    }
+  }, {
+    "operation": "ADD",
+    "type": "databaseUser",
+    "names": {
+      "organizationName": "Provider"
+    },
+    "attributes": {
+      "name": "opticdl_admin",
+      "password": "{idm_opticdl_admin_password}",
+      "type": "REGULAR"
+    },
+    "associations": [{
+        "type": "role",
+        "name": "di_admin"
+      }, {
+        "type": "role",
+        "name": "di_ingestion"
+      }, {
+        "type": "role",
+        "name": "di_data_access"
+      }, {
+        "type": "role",
+        "name": "s3_admin"
+      }, {
+        "type": "role",
+        "name": "nnm_dashboard_admin"
+      }
+    ]
+  }, {
+    "operation": "ADD_OR_UPDATE",
+    "type": "databaseUser",
+    "names": {
+      "organizationName": "Provider",
+      "databaseUserName": "integration_admin"
+    },
+    "attributes": {
+      "name": "integration_admin",
+      "type": "SYSTEM"
+    },
+    "associations": [{
+        "type": "group",
+        "name": "Administrators"
+      }, {
+        "type": "role",
+        "name": "di_admin"
+      }, {
+        "type": "role",
+        "name": "di_ingestion"
+      }, {
+        "type": "role",
+        "name": "di_data_access"
+      }
+    ]
+  }, {
+    "operation": "ADD_OR_UPDATE",
+    "type": "role",
+    "names": {
+      "organizationName": "Provider"
+    },
+    "attributes": {
+      "name": "MccAgentlessUser",
+      "displayName": "Agentless Monitoring User",
+      "description": "User access for Agentless Monitoring",
+      "application": "MCC"
+    }
+  }, {
+    "operation": "ADD_OR_UPDATE",
+    "type": "role",
+    "names": {
+      "organizationName": "Provider"
+    },
+    "attributes": {
+      "name": "MccAgentlessAdmin",
+      "displayName": "Agentless Monitoring Admin",
+      "description": "Admin access for Agentless Monitoring",
+      "application": "MCC"
+    }
+  }, {
+    "operation": "ADD_OR_UPDATE",
+    "type": "role",
+    "names": {
+      "organizationName": "Provider"
+    },
+    "attributes": {
+      "name": "SISadmin",
+      "displayName": "SiteScope Admin",
+      "description": "Admin access for SiteScope",
+      "application": "SiteScope"
+    }
+  }, {
+    "operation": "ADD_OR_UPDATE",
+    "type": "role",
+    "names": {
+      "organizationName": "Provider"
+    },
+    "attributes": {
+      "name": "SISuser",
+      "displayName": "SiteScope User",
+      "description": "User access for SiteScope",
+      "application": "SiteScope"
+    }
+  }, {
+    "operation": "ADD",
+    "type": "AbstractGroup",
+    "names": {
+      "organizationName": "Provider"
+    },
+    "attributes": {
+      "name": "SISuser",
+      "displayName": "SiteScope User Group",
+      "groupInfo": "SiteScope Users",
+      "description": "SiteScope Users"
+    },
+    "associations": [{
+        "name": "SISuser",
+        "application": "SiteScope",
+        "type": "role"
+      }, {
+        "name": "MccAgentlessUser",
+        "application": "MCC",
+        "type": "role"
+      }, {
+        "name": "monitoringServiceUserRole",
+        "type": "role"
+      }
+    ]
+  }, {
+    "operation": "ADD_OR_UPDATE",
+    "type": "groupRepresentation",
+    "names": {
+      "organizationName": "Provider",
+      "abstractGroupName": "SISuser"
+    },
+    "attributes": {
+      "name": "SISuser",
+      "displayName": "SiteScope User Group",
+      "representationType": "DATABASE_GROUP_REPRESENTATION"
+    }
+  }, {
+    "operation": "ADD",
+    "type": "AbstractGroup",
+    "names": {
+      "organizationName": "Provider"
+    },
+    "attributes": {
+      "name": "SISadmin",
+      "displayName": "SiteScope Admin Group",
+      "groupInfo": "SiteScope Admins",
+      "description": "SiteScope Admins"
+    },
+    "associations": [{
+        "name": "SISadmin",
+        "application": "SiteScope",
+        "type": "role"
+      }, {
+        "name": "MccAgentlessAdmin",
+        "application": "MCC",
+        "type": "role"
+      }, {
+        "name": "monitoringServiceAdminRole",
+        "type": "role"
+      }
+    ]
+  }, {
+    "operation": "ADD_OR_UPDATE",
+    "type": "groupRepresentation",
+    "names": {
+      "organizationName": "Provider",
+      "abstractGroupName": "SISadmin"
+    },
+    "attributes": {
+      "name": "SISadmin",
+      "displayName": "SiteScope Admin Group",
+      "representationType": "DATABASE_GROUP_REPRESENTATION"
+    }
+  }
+]

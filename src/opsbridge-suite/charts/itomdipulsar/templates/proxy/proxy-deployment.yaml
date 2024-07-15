@@ -1,0 +1,309 @@
+{{/* # */}}
+{{/* # Licensed to the Apache Software Foundation (ASF) under one */}}
+{{/* # or more contributor license agreements.  See the NOTICE file */}}
+{{/* # distributed with this work for additional information */}}
+{{/* # regarding copyright ownership.  The ASF licenses this file */}}
+{{/* # to you under the Apache License, Version 2.0 (the */}}
+{{/* # "License"); you may not use this file except in compliance */}}
+{{/* # with the License.  You may obtain a copy of the License at */}}
+{{/* # */}}
+{{/* #   http://www.apache.org/licenses/LICENSE-2.0 */}}
+{{/* # */}}
+{{/* # Unless required by applicable law or agreed to in writing, */}}
+{{/* # software distributed under the License is distributed on an */}}
+{{/* # "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY */}}
+{{/* # KIND, either express or implied.  See the License for the */}}
+{{/* # specific language governing permissions and limitations */}}
+{{/* # under the License. */}}
+{{/* # */}}
+
+{{ if .Values.components.proxy -}}
+{{- include "pulsar.setCurrentComponentFull" (set . "currentComponent" .Values.proxy.component) -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: "{{ .currentComponentFull }}"
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "pulsar.standardLabels" . | nindent 4 }}
+  annotations:
+    {{- include "pulsar.template.annotations" . | nindent 4 }}
+    {{- include "pulsar.template.reloaderannotations" . | nindent 4 }}
+spec:
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1        {{/* # how many pods we can add at a time */}}
+      maxUnavailable: 1
+  replicas: {{ .Values.proxy.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "pulsar.matchLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "pulsar.standardLabels" . | nindent 8 }}
+      annotations:
+        pod.boostport.com/vault-init-container: install
+        {{- if .Values.global.vaultAppRole }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-{{ .Values.global.vaultAppRole }}
+        {{- else }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-default
+        {{- end }}
+        prometheus.io/scrape: "true"
+        {{- if and .Values.tls.enabled .Values.tls.proxy.enabled }}
+        prometheus.io/port: "{{ .Values.proxy.ports.https }}"
+        {{- else }}
+        prometheus.io/port: "{{ .Values.proxy.ports.http }}"
+        {{- end }}
+        {{- if .Values.proxy.autoRollDeployment }}
+        checksum/config: {{ include (print $.Template.BasePath "/proxy/proxy-configmap.yaml") . | sha256sum }}
+        {{- end }}
+        {{- include "pulsar.template.annotations" . | nindent 8 }}
+{{- with .Values.proxy.annotations }}
+{{ toYaml . | indent 8 }}
+{{- end }}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: {{ .Values.global.securityContext.user | int64 }}
+        runAsGroup: {{ .Values.global.securityContext.fsGroup | int64 }}
+        fsGroup: {{ .Values.global.securityContext.fsGroup | int64 }}        
+        seccompProfile:
+          type: RuntimeDefault
+      {{- with ( coalesce .Values.nodeSelector .Values.global.nodeSelector ) }}
+      nodeSelector:
+        {{ toYaml . }}
+      {{- end }}
+    {{- if .Values.proxy.tolerations }}
+      tolerations:
+{{ toYaml .Values.proxy.tolerations | indent 8 }}
+    {{- end }}
+
+      serviceAccount: {{ .Values.deployment.rbac.proxyServiceAccount | default "itomdipulsar-sa" }}
+      serviceAccountName: {{ .Values.deployment.rbac.proxyServiceAccount | default "itomdipulsar-sa" }}
+      {{- $labelValue := printf "component: %s" .Values.proxy.component -}}
+      {{- include "helm-lib.network.topologySpreadConstraints" (dict "labelValue" $labelValue "Values" .Values "Capabilities" .Capabilities) | nindent 6 }}
+      affinity:
+        {{- if and .Values.affinity.anti_affinity .Values.proxy.affinity.anti_affinity}}
+        podAntiAffinity:
+          {{ .Values.proxy.affinity.type }}:
+          {{ if eq .Values.proxy.affinity.type "requiredDuringSchedulingIgnoredDuringExecution"}}
+          - labelSelector:
+              matchExpressions:
+              - key: "app"
+                operator: In
+                values:
+                - "{{ template "pulsar.name" . }}"
+              - key: "release"
+                operator: In
+                values:
+                - {{ .Release.Name }}
+              - key: "component"
+                operator: In
+                values:
+                - {{ .currentComponent }}
+            topologyKey: "kubernetes.io/hostname"
+          {{ else }}
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: "app"
+                      operator: In
+                      values:
+                      - "{{ template "pulsar.name" . }}"
+                    - key: "release"
+                      operator: In
+                      values:
+                      - {{ .Release.Name }}
+                    - key: "component"
+                      operator: In
+                      values:
+                      - {{ .currentComponent }}
+                topologyKey: "kubernetes.io/hostname"
+          {{ end }}
+        {{- end }}
+      terminationGracePeriodSeconds: {{ .Values.proxy.gracePeriod }}
+      initContainers:
+    {{- include "helm-lib.waitForVault" . | nindent 6 }}
+    {{- $authsuperuserproxy := (include "auth.superusers.proxy" .) }}
+    {{- $pulsarexternalhost := (include "pulsar.di.externalAccessHost" .) }}    
+    {{- $glhost := .Values.global.externalAccessHost -}}
+    {{- $compfull := .currentComponentFull -}}
+    {{ $certNames := printf "Common_Name:%s,Additional_SAN:%s/%s/%s.%s/%s.%s.svc/%s.%s.svc.cluster.local%s" $authsuperuserproxy $glhost $compfull $compfull .Release.Namespace $compfull .Release.Namespace $compfull .Release.Namespace $pulsarexternalhost }}
+    {{- include "helm-lib.containers.vaultInit" (dict "certNames" $certNames "Values" .Values) | nindent 6 }}
+      {{- include "pulsar.zookeeper.wait.init.node" . | nindent 6}}
+      {{/* # This init container will wait for at least one broker to be ready before */}}
+      {{/* # deploying the proxy */}}
+      - name: wait-broker-ready
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: {{ .Values.global.securityContext.user | int64 }}
+          runAsGroup: {{ .Values.global.securityContext.fsGroup | int64 }}                
+          seccompProfile:
+            type: RuntimeDefault
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        image: {{ .Values.global.docker.registry }}/{{ .Values.global.docker.orgName }}/{{ .Values.pulsar.image }}:{{ .Values.pulsar.imageTag }}
+        imagePullPolicy: {{ .Values.global.docker.imagePullPolicy }}
+        resources:
+          {{ toYaml .Values.initContainers.wait_broker_ready.resources | nindent 10 }}
+        command: ["sh", "-c"]
+        args:
+          - >-
+            source bin/coso-init.sh;
+            set -e;
+            brokerServiceNumber="$(nslookup -timeout=10 {{ template "pulsar.fullname" . }}-{{ .Values.broker.component }} | grep Name | wc -l)";
+            until [ ${brokerServiceNumber} -ge 1 ]; do
+              echo "pulsar cluster {{ template "pulsar.fullname" . }} isn't initialized yet ... check in 10 seconds ...";
+              sleep 10;
+              brokerServiceNumber="$(nslookup -timeout=10 {{ template "pulsar.fullname" . }}-{{ .Values.broker.component }} | grep Name | wc -l)";
+            done;
+        volumeMounts:
+        - name: tmp
+          mountPath: /pulsar/tmp
+        - name: conf
+          mountPath: /pulsar/conf
+        - name: logs
+          mountPath: /pulsar/logs
+        - name: ssl
+          mountPath: /pulsar/ssl
+        - name: vault-token
+          mountPath: /var/run/secrets/boostport.com
+        {{- include "pulsar.coso.init.volumeMounts" . | nindent 8 }}
+{{- with .Values.common.extraInitContainers }}
+{{ toYaml . | indent 6 }}
+{{- end }}
+{{- with .Values.proxy.extraInitContainers }}
+{{ toYaml . | indent 6 }}
+{{- end }}
+      containers:
+      {{- include "helm-lib.containers.vaultRenew" (dict "Values" .Values) | nindent 6 }}     
+      - name: "{{ .currentComponentFull }}"
+        securityContext:        
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        image: {{ .Values.global.docker.registry }}/{{ .Values.global.docker.orgName }}/{{ .Values.pulsar.image }}:{{ .Values.pulsar.imageTag }}
+        imagePullPolicy: {{ .Values.global.docker.imagePullPolicy }}
+        {{- if .Values.proxy.probe.liveness.enabled }}
+        livenessProbe:
+{{ include "pulsar.proxy.probe" . | indent 10 }}
+          initialDelaySeconds: {{ .Values.proxy.probe.liveness.initialDelaySeconds }}
+          periodSeconds: {{ .Values.proxy.probe.liveness.periodSeconds }}
+          timeoutSeconds: {{ .Values.proxy.probe.liveness.timeoutSeconds }}
+          failureThreshold: {{ .Values.proxy.probe.liveness.failureThreshold }}
+          successThreshold: {{ .Values.proxy.probe.liveness.successThreshold }}
+        {{- end }}
+        {{- if .Values.proxy.probe.readiness.enabled }}
+        readinessProbe:
+{{ include "pulsar.proxy.probe" . | indent 10 }}
+          initialDelaySeconds: {{ .Values.proxy.probe.readiness.initialDelaySeconds }}
+          periodSeconds: {{ .Values.proxy.probe.readiness.periodSeconds }}
+          timeoutSeconds: {{ .Values.proxy.probe.readiness.timeoutSeconds }}
+          failureThreshold: {{ .Values.proxy.probe.readiness.failureThreshold }}
+          successThreshold: {{ .Values.proxy.probe.readiness.successThreshold }}
+        {{- end }}
+        {{- if .Values.proxy.probe.startup.enabled }}
+        startupProbe:
+{{ include "pulsar.proxy.probe" . | indent 10 }}
+          initialDelaySeconds: {{ .Values.proxy.probe.startup.initialDelaySeconds }}
+          periodSeconds: {{ .Values.proxy.probe.startup.periodSeconds }}
+          timeoutSeconds: {{ .Values.proxy.probe.startup.timeoutSeconds }}
+          failureThreshold: {{ .Values.proxy.probe.startup.failureThreshold }}
+          successThreshold: {{ .Values.proxy.probe.startup.successThreshold }}
+        {{- end }}
+
+        resources:
+          {{ toYaml .Values.proxy.resources | nindent 10 }}
+
+        command: ["sh", "-c"]
+        args:
+        - >
+          source bin/coso-init.sh;
+          bin/apply-config-from-env.py conf/proxy.conf conf/client.conf;
+          echo "OK" > /pulsar/tmp/status;
+          exec bin/pulsar proxy;
+        ports:
+        {{- if and (.Values.tls.enabled) (.Values.tls.proxy.enabled) }}
+        - name: https
+          containerPort: {{ .Values.proxy.ports.https }}
+        - name: pulsarssl
+          containerPort: {{ .Values.proxy.ports.pulsarssl }}
+        {{- else }}
+        - name: http
+          containerPort: {{ .Values.proxy.ports.http }}
+        - name: pulsar
+          containerPort: {{ .Values.proxy.ports.pulsar }}
+        {{- end }}
+        env:
+        - name: PROXY_AUDIT_PATH
+          value: "/pulsar/audit-log/{{ .Release.Namespace }}/{{ .Release.Namespace }}"
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        envFrom:
+        - configMapRef:
+            name: "{{ .currentComponentFull }}"
+        volumeMounts:
+          - name: tmp
+            mountPath: /pulsar/tmp
+          - name: conf
+            mountPath: /pulsar/conf
+          - name: logs
+            mountPath: /pulsar/logs
+          - name: ssl
+            mountPath: /pulsar/ssl
+          - name: servercert-secret-volume
+            mountPath: /pulsar/ssl/external-ca-signed-cert
+          - name: vault-token
+            mountPath: /var/run/secrets/boostport.com
+          {{- include "pulsar.coso.init.volumeMounts" . | nindent 10 }}
+          {{- include "pulsar.coso.externalcert.volumeMounts" . | nindent 10 }}
+          {{- include "pulsar.proxy.log.volumeMounts" . | nindent 10 }}
+          {{- include "pulsar.proxy.certs.volumeMounts" . | nindent 10 }}
+          {{- if .Values.proxy.config.enableSecurityAudit }}
+          - name: proxy-security-audit-vol
+            mountPath: /pulsar/audit-log
+          {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: conf
+          emptyDir: {}
+        - name: ssl
+          emptyDir: {}
+        - name: logs
+          emptyDir: {}
+        - name: vault-token
+          emptyDir: {}
+        - name: servercert-secret-volume
+          projected:
+            sources:
+        {{- if .Values.proxy.config.useExternalCASignedCerts }}
+            - secret:
+                {{- if .Values.proxy.config.caSignedServerCertSecretName }}
+                name: {{ .Values.proxy.config.caSignedServerCertSecretName | quote }}
+                {{- else }}
+                name: {{ .Values.global.nginx.secretName | default "nginx-default-secret" | quote }}
+                {{- end }}
+        {{- end }}
+        {{- include "pulsar.coso.init.volumes" . | nindent 8 }}
+        {{- include "pulsar.coso.externalcert.volumes" . | nindent 8 }}
+        {{- include "pulsar.proxy.log.volumes" . | nindent 8 }}
+        {{- include "pulsar.proxy.certs.volumes" . | nindent 8 }}
+        {{- if .Values.proxy.config.enableSecurityAudit }}
+        - name: proxy-security-audit-vol
+        {{- if .Values.proxy.config.securityAuditVolumeClaim }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.proxy.config.securityAuditVolumeClaim }}
+        {{- else }}
+          {{- include "helm-lib.pvcStorage" (dict "claim" "logVolumeClaim" "Release" .Release "Template" .Template "Values" .Values ) | nindent 10}}
+        {{- end }}
+        {{- end }}
+{{- end }}

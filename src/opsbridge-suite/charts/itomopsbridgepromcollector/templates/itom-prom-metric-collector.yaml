@@ -1,0 +1,390 @@
+{{/*# Copyright 2023 Open Text.*/}}
+
+{{/*# The only warranties for products and services of Open Text and its affiliates*/}}
+{{/*# and licensors ("Open Text") are as may be set forth in the express warranty*/}}
+{{/*# statements accompanying such products and services. Nothing herein should be*/}}
+{{/*# construed as constituting an additional warranty. Open Text shall not be*/}}
+{{/*# liable for technical or editorial errors or omissions contained herein. The*/}}
+{{/*# information contained herein is subject to change without notice.*/}}
+
+
+{{ if .Values.global.monitoringService.enablePrometheusMonitor -}}
+{{- $bbc:= lookup "v1" "ConfigMap" .Release.Namespace "omi-bbc-trusted-certs" | default dict -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    deployment.microfocus.com/default-replica-count: "1"
+    deployment.microfocus.com/runlevel: UP
+  name: itom-monitoring-prom-metric-collector
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: itom-monitoring-prom-metric-collector-app
+spec:
+  replicas: {{ .Values.promcollector.config.replicaCount }}
+  selector:
+    matchLabels:
+      app: itom-monitoring-prom-metric-collector-app
+  template:
+    metadata:
+      labels:
+        app: itom-monitoring-prom-metric-collector-app
+        service: itom-monitoring-prom-metric-collector-svc
+        app.kubernetes.io/name: itom-monitoring-prom-metric-collector
+        app.kubernetes.io/managed-by: {{.Release.Name}}
+        app.kubernetes.io/version: {{ .Values.promcollector.imageTag }}
+        itom.microfocus.com/capability: HyperscaleObservability
+        tier.itom.microfocus.com/backend: backend
+        itom.microfocus.com/description: Prometheus_Metric_Collector_collects_collections
+      annotations:
+        {{- if .Values.global.vaultAppRole }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-{{ .Values.global.vaultAppRole }}
+        {{- else }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-default
+        {{- end }}
+        pod.boostport.com/vault-init-container: install
+        prometheus.io/port: '8080'
+        prometheus.io/scrape: 'true'
+    spec:
+      serviceAccountName: {{ .Values.deployment.rbac.serviceAccount }}-metric
+      securityContext:
+        runAsUser: {{ .Values.global.securityContext.user }}
+        runAsGroup: {{ .Values.global.securityContext.fsGroup }}
+        fsGroup: {{ .Values.global.securityContext.fsGroup }}
+      initContainers:
+        {{- include "helm-lib.waitFor" ( dict "service" "cs-redis" "port" "6380" "Values" .Values) | nindent 8 }}
+        {{- $certNames := printf "Common_Name:itom-monitoring-prom-metric-collector,Additional_SAN:itom-monitoring-prom-metric-collector/itom-monitoring-prom-metric-collector.%s/itom-monitoring-prom-metric-collector.%s.svc.cluster.local/itom-monitoring-prom-metric-collector/itom-monitoring-prom-metric-collector-svc/itom-monitoring-prom-metric-collector-svc.%s/itom-monitoring-prom-metric-collector-svc.%s.svc.cluster.local,Secret:itom-monitoring-prom-metric-collector-metrics-client,UpdateSecret:true,File_Name:server" .Release.Namespace .Release.Namespace .Release.Namespace .Release.Namespace -}}
+
+        {{- include "helm-lib.containers.vaultInit" (dict "containerName" "install" "certNames" $certNames "Values" .Values) | nindent 8 }}
+
+      containers:
+        {{- include "helm-lib.containers.vaultRenew" (dict "containerName" "kubernetes-vault-renew" "Values" .Values) | nindent 8 }}
+        - name: itom-monitoring-prom-metric-collector
+          image: {{ .Values.global.docker.registry }}/{{ .Values.global.docker.orgName }}/{{ .Values.promcollector.image }}:{{ .Values.promcollector.imageTag }}
+          imagePullPolicy: {{ .Values.global.docker.imagePullPolicy }}
+          livenessProbe:
+            exec:
+              command:
+                - curl
+                - https://localhost:40006/v1.0/health
+                - --insecure
+                - --key
+                - /var/run/secrets/boostport.com/server.key
+                - --cert
+                - /var/run/secrets/boostport.com/server.crt
+            failureThreshold: 3
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            successThreshold: 1
+            timeoutSeconds: 5
+          readinessProbe:
+            exec:
+              command:
+                - curl
+                - https://localhost:40006/v1.0/health
+                - --insecure
+                - --key
+                - /var/run/secrets/boostport.com/server.key
+                - --cert
+                - /var/run/secrets/boostport.com/server.crt
+            failureThreshold: 3
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 5
+          ports:
+          - containerPort: 40006
+            name: mcoll-promc
+            protocol: TCP
+          - containerPort: 8080
+            name: prometheus-proc
+            protocol: TCP
+          resources:
+            limits:
+              cpu: 2
+              memory: 1Gi
+            requests:
+              cpu: 100m
+              memory: 200Mi
+          volumeMounts:
+            - name: vault-token
+              mountPath: /var/run/secrets/boostport.com
+            - name: prom-metric-collector-log-volume
+              mountPath: /logs
+              subPath: cloud-monitoring/prom/metric/collector
+            - name: prom-metric-collector-conf-volume
+              mountPath: /content
+              subPath: prom-collector/content
+            - name: conf
+              mountPath: /config
+            {{- if .Values.rcp.enabled }}  
+            - mountPath: /service/edge-certs
+              name: edge-certs-volume
+            {{- if gt (len $bbc) 0 }}  
+            - name: edge-trust-cert
+              mountPath: /service/edge-trust-cert              
+            {{- end }}
+            {{- end }}               
+          env:
+          - name: MY_NODE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName
+          - name: MY_POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: MY_POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          - name: MY_POD_IP
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIP
+          - name: MY_CONTAINER_NAME
+            value: itom-monitoring-prom-metric-collector
+          - name: "EXTERNAL_ACCESS_HOST"
+            value: {{ .Values.global.externalAccessHost | quote }}
+          - name: "EXTERNAL_ACCESS_PORT"
+            value: {{ .Values.global.externalAccessPort | quote }}
+          - name: EMBEDDED_STATIC_THRESHOLDING
+            value: {{ .Values.global.monitoringService.embeddedStaticThresholding | quote }}
+          - name: IDM_USER
+            value: {{ default "integration_admin" | quote }}
+          - name: IDM_KEY
+            value: {{ .Values.global.idm.integrationUserKey | default "idm_integration_admin_password" | quote }}
+          - name: IDM_ADDR
+            value: https://{{ .Values.global.idm.serviceName | default "itom-idm-svc" }}:{{ .Values.global.idm.internalPort | default "18443" }}
+          - name: "TENANT"
+            value: {{ .Values.global.idm.tenant | default "Provider" | quote }}
+          - name: "EDGE_PROXY"
+            value: {{ default "http://omi-rcp:9090" | quote }}    
+          - name: "RCP_MAX_CONNS_PER_HOST"
+            value: {{ .Values.rcp.maxConnPerHost | quote }}   
+          - name: "RCP_MAX_IDLE_CONNS"
+            value: {{ .Values.rcp.maxIdleconns | quote }}   
+          - name: "RCP_IDLE_CONN_TIMEOUT"
+            value: {{ .Values.rcp.idleConnTimeOut | quote }}   
+          - name: "RCP_MAX_IDLE_CONNS_PER_HOST"
+            value: {{ .Values.rcp.maxIdleConnPerHost | quote }}   
+          - name: "RCP_CONNECTION_TIMEOUT"
+            value: {{ .Values.rcp.connTimeout | quote }}            
+        - name: itom-monitoring-job-fetcher
+          image: {{ .Values.global.docker.registry }}/{{ .Values.global.docker.orgName }}/{{ .Values.global.monitoringService.jobFetcher.image | default .Values.jobfetcher.image }}:{{ .Values.global.monitoringService.jobFetcher.imageTag | default .Values.jobfetcher.imageTag }}
+          imagePullPolicy: {{ .Values.global.docker.imagePullPolicy }}
+          ports:
+          - containerPort: 40005
+            name: mcoll-promj
+            protocol: TCP
+          - containerPort: 41001
+            name: prometheus-proj
+            protocol: TCP
+          resources:
+            limits:
+              cpu: 2
+              memory: 500Mi
+            requests:
+              cpu: 100m
+              memory: 200Mi
+          volumeMounts:
+            - name: conf
+              mountPath: /config
+            - name: vault-token
+              mountPath: /var/run/secrets/boostport.com
+            - name: prom-metric-collector-log-volume
+              mountPath: /logs
+              subPath: cloud-monitoring/prom/metric/job-fetcher
+          env:
+          - name: "PROMETHEUS_METRICS_PORT"
+            value: "41001"
+          - name: "MAX_COLLECTION_TASK"
+            value: "2"
+          - name: "REDIS_URL"
+            value: {{ .Values.redis.svcname }}:{{ .Values.redis.port }}
+          - name: "REDIS_SRV_BASE_NAME"
+            value: {{ .Values.redis.srvbasename }}
+          - name: "REDIS_PWD_KEY"
+            value: {{ .Values.redis.passwdkey }}
+          - name: "SUBSCRIPTION_NAME"
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: "COLLECTION_SCHEDULER_URL"
+            value: {{ .Values.collectionscheduler.svcname }}:{{ .Values.collectionscheduler.port }}
+          - name: "CDF_NAMESPACE"
+            value: {{ .Release.Namespace | quote }}
+          - name: "VAULT_SECRET_DIR"
+            value: /var/run/secrets/boostport.com
+          - name: MY_NODE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName
+          - name: MY_POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: MY_POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          - name: MY_POD_IP
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIP
+          - name: MY_CONTAINER_NAME
+            value: itom-monitoring-job-fetcher
+        - name: itom-monitoring-result-processor
+          image: {{ .Values.global.docker.registry }}/{{ .Values.global.docker.orgName }}/{{ .Values.global.monitoringService.resultProcessor.image | default .Values.resultprocessor.image }}:{{ .Values.global.monitoringService.resultProcessor.imageTag | default .Values.resultprocessor.imageTag }}
+          imagePullPolicy: {{ .Values.global.docker.imagePullPolicy }}
+          ports:
+          - containerPort: 40007
+            name: mcoll-promr
+            protocol: TCP
+          - containerPort: 41002
+            name: prometheus-pror
+            protocol: TCP
+          resources:
+            limits:
+              cpu: 2
+              memory: 600Mi
+            requests:
+              cpu: 100m
+              memory: 200Mi
+          volumeMounts:
+            - name: vault-token
+              mountPath: /var/run/secrets/boostport.com
+            - name: prom-metric-collector-log-volume
+              mountPath: /logs
+              subPath: cloud-monitoring/prom/metric/result-processor
+          env:
+          - name: "PROMETHEUS_METRICS_PORT"
+            value: "41002"
+          - name: "DI_SERVER_URL"
+            value: {{ .Values.global.desProtocol | default "https" }}://{{ .Values.global.saas.externalAccessHost | default .Values.promcollector.config.desreceiversvc }}:{{ .Values.global.saas.externalAccessPort | default .Values.promcollector.config.desreceiverport }}/itomdi/receiver
+          - name: "SNF_URL"
+            value: {{ .Values.snf.protocol }}://{{ .Values.snf.svcname }}:{{ .Values.snf.port }}/v1/forward
+          - name: "SUBSCRIPTION_NAME"
+            value: {{ .Values.resultprocessor.config.subscriptionname | quote  }}
+          - name: "COSO_SUBSCRIPTION"
+            value: {{ .Values.promcollector.config.cososubscription  }}
+          - name: "VAULT_SECRET_DIR"
+            value: /var/run/secrets/boostport.com
+          - name: "REDIS_URL"
+            value: {{ .Values.redis.svcname }}:{{ .Values.redis.port }}
+          - name: "REDIS_SRV_BASE_NAME"
+            value: {{ .Values.redis.srvbasename }}
+          - name: "REDIS_PWD_KEY"
+            value: {{ .Values.redis.passwdkey }}
+          - name: "REDIS_SET_PREFIX"
+            value: "monitor:"
+          - name: "MAX_CONCURRENCY"
+            value: "25"
+          - name: "ENABLE_BATCHING"
+            value: "true"
+          - name: "BATCHING_SIZE_IN_BYTES"
+            value: "10000"
+          {{ if .Values.global.monitoringService.embeddedStaticThresholding -}}
+          - name: "THRESHOLD_SERVER_URL"
+            value: https://localhost:{{ .Values.thresholdprocessor.port }}/v1/threshold/data
+          {{- end }}
+          - name: "EMBEDDED_STATIC_THRESHOLDING"
+            value: {{ .Values.global.monitoringService.embeddedStaticThresholding | quote }}
+          - name: MY_NODE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName
+          - name: MY_POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: MY_POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          - name: MY_POD_IP
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIP
+          - name: MY_CONTAINER_NAME
+            value: itom-monitoring-result-processor
+        {{ if .Values.global.monitoringService.embeddedStaticThresholding -}}
+        - name: itom-monitoring-threshold-processor
+          image: {{ .Values.global.docker.registry }}/{{ .Values.global.docker.orgName }}/{{ .Values.thresholdprocessor.image }}:{{ .Values.thresholdprocessor.imageTag }}
+          imagePullPolicy: {{ .Values.global.docker.imagePullPolicy }}
+          ports:
+          - containerPort: 40008
+            name: mcoll-promth
+            protocol: TCP
+          resources:
+            limits:
+              cpu: 2
+              memory: 600Mi
+            requests:
+              cpu: 100m
+              memory: 200Mi
+          volumeMounts:
+            - name: vault-token
+              mountPath: /var/run/secrets/boostport.com
+            - name: prom-metric-collector-log-volume
+              mountPath: /logs
+              subPath: cloud-monitoring/prom/threshold-processor/static
+          env:
+          - name: THRESHOLD_PORT
+            value: {{ .Values.thresholdprocessor.port | quote }}
+          - name: "VAULT_SECRET_DIR"
+            value: /var/run/secrets/boostport.com
+          - name: "REDIS_URL"
+            value: {{ .Values.redis.svcname }}:{{ .Values.redis.port }}
+          - name: "REDIS_SRV_BASE_NAME"
+            value: {{ .Values.redis.srvbasename }}
+          - name: "REDIS_PWD_KEY"
+            value: {{ .Values.redis.passwdkey }}
+          - name: "REDIS_SET_PREFIX"
+            value: "monitor:"
+          - name: MY_NODE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName
+          - name: MY_POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: MY_POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          - name: MY_POD_IP
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIP
+          - name: MY_CONTAINER_NAME
+            value: itom-monitoring-threshold-processor
+        {{- end }}
+      {{- with (coalesce .Values.nodeSelector .Values.global.nodeSelector) }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+      - name: vault-token
+        emptyDir: {}
+      - name: prom-metric-collector-log-volume
+        {{- include "helm-lib.pvcStorage" (dict "claim" "logVolumeClaim" "Release" .Release "Template" .Template "Values" .Values ) | nindent 8 }}
+      - name: prom-metric-collector-conf-volume
+        {{- include "helm-lib.pvcStorage" (dict "claim" "configVolumeClaim" "Release" .Release "Template" .Template "Values" .Values ) | nindent 8 }}
+      - name: conf
+        configMap:
+          name: itom-monitoring-prom-metric-collector-cm
+          defaultMode: 0755
+      {{- if .Values.rcp.enabled }}    
+      - name: edge-certs-volume
+        secret:
+          defaultMode: 420
+          secretName: itom-monitoring-prom-rcp
+      {{- if gt (len $bbc) 0 }}    
+      - name: edge-trust-cert
+        configMap:
+          name: omi-bbc-trusted-certs             
+      {{- end }}
+      {{- end }}             
+{{- end }}

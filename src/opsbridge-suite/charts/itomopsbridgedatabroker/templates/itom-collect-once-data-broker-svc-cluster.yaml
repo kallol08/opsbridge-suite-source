@@ -1,0 +1,33 @@
+{{/*# Copyright 2023 Open Text.*/}}
+
+{{/*# The only warranties for products and services of Open Text and its affiliates*/}}
+{{/*# and licensors ("Open Text") are as may be set forth in the express warranty*/}}
+{{/*# statements accompanying such products and services. Nothing herein should be*/}}
+{{/*# construed as constituting an additional warranty. Open Text shall not be*/}}
+{{/*# liable for technical or editorial errors or omissions contained herein. The*/}}
+{{/*# information contained herein is subject to change without notice.*/}}
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: itom-collect-once-data-broker-clusterip
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: itom-monitoring-service-data-broker-app
+    service: itom-collect-once-data-broker-clusterip
+    app.kubernetes.io/name: itom-monitoring-service-data-broker
+    app.kubernetes.io/managed-by: {{.Release.Name}}
+    app.kubernetes.io/version: {{ .Values.collectiondatabroker.imageTag }}
+    itom.microfocus.com/capability: HyperscaleObservability
+    tier.itom.microfocus.com/backend: backend
+    itom.microfocus.com/description: Containerized_OA_for_Cert_Broker
+spec:
+  ipFamilyPolicy: PreferDualStack
+  ports:
+  - name: agent-receiver
+    port: 30005
+    targetPort: 30005
+  selector:
+    app: itom-monitoring-service-data-broker-app
+  sessionAffinity: None
+  type: ClusterIP

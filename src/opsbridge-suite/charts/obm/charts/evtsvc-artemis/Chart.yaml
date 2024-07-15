@@ -1,0 +1,9 @@
+apiVersion: v2
+appVersion: 3.7.1
+dependencies:
+- name: helm-lib
+  repository: https://orgartifactory.swinfra.net/artifactory/itom-helm-group/
+  version: 1.11.0-1
+description: Event Service Artemis Bus
+name: evtsvc-artemis
+version: 3.7.1

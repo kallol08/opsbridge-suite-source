@@ -1,0 +1,216 @@
+{{/*# Copyright 2023 Open Text.*/}}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  labels:
+    app.kubernetes.io/name: itom-zookeeper
+    app.kubernetes.io/version: {{.Values.zookeeper.imageTag}}
+  name: itom-zookeeper
+  annotations:
+    deployment.microfocus.com/default-replica-count: "1"
+    deployment.microfocus.com/runlevel: UP
+    {{- if .Values.global.tlsTruststore }}
+    configmap.reloader.stakater.com/reload: {{.Values.global.tlsTruststore | quote }}
+    {{- end}}
+spec:
+  serviceName: itom-zookeeper-svc
+  replicas: {{ .Values.deployment.replicas }}
+  selector:
+    matchLabels:
+      name: itom-zookeeper
+  updateStrategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: itom-zookeeper
+        app.kubernetes.io/version: {{.Values.zookeeper.imageTag}}
+        name: itom-zookeeper
+      annotations:
+      {{- if .Values.global.vaultAppRole }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-{{ .Values.global.vaultAppRole }}
+      {{- else }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-default
+      {{- end }}
+        pod.boostport.com/vault-init-container: install
+    spec:
+      serviceAccountName: itom-zookeeper
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: {{ .Values.global.securityContext.user }}
+        runAsGroup: {{ .Values.global.securityContext.fsGroup }}
+        fsGroup: {{ .Values.global.securityContext.fsGroup }}
+      terminationGracePeriodSeconds: 30
+      initContainers:          
+        {{- include "helm-lib.waitForVault" . | nindent 8 }}
+        {{- include "helm-lib.containers.vaultInit" (dict "certNames" (printf "Common_Name:itom-zookeeper,Additional_SAN:%s/itom-zookeeper/itom-zookeeper.%s/itom-zookeeper-client-svc/itom-zookeeper-client-svc.%s" .Values.global.externalAccessHost  .Release.Namespace .Release.Namespace) "Values" .Values) | nindent 8 }}
+      {{- if ne .Values.global.docker.imagePullSecret "" }}
+      imagePullSecrets:
+      - name: {{ .Values.global.docker.imagePullSecret }}
+      {{- end }}
+      containers:
+      - name: itom-zookeeper
+        imagePullPolicy: {{ .Values.global.docker.imagePullPolicy }}
+        image: {{ .Values.global.docker.registry }}/{{ .Values.global.docker.orgName }}/{{ .Values.zookeeper.image }}:{{ .Values.zookeeper.imageTag }}
+        resources:
+          {{- toYaml .Values.resources | nindent 10 }}
+        ports:
+        - containerPort: 2281
+          name: client-tls
+        - containerPort: 2888
+          name: server
+        - containerPort: 3888
+          name: leader-election
+        readinessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - 'echo "ruok" | openssl s_client -quiet -crlf -connect localhost:2281 -CAfile /var/run/secrets/boostport.com/issue_ca.crt -cert /var/run/secrets/boostport.com/server.crt -key /var/run/secrets/boostport.com/server.key | grep imok'
+          initialDelaySeconds: 20
+          timeoutSeconds: 5
+        livenessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - 'echo "ruok" | openssl s_client -quiet -crlf -connect localhost:2281 -CAfile /var/run/secrets/boostport.com/issue_ca.crt -cert /var/run/secrets/boostport.com/server.crt -key /var/run/secrets/boostport.com/server.key | grep imok'
+          initialDelaySeconds: 20
+          timeoutSeconds: 5
+          periodSeconds: 30
+          failureThreshold: 5
+        securityContext:
+          readOnlyRootFilesystem: true
+        env:
+        - name: uid
+          value: {{ .Values.global.securityContext.user | quote }}
+        - name: guid
+          value: {{ .Values.global.securityContext.fsGroup | quote }}
+        - name : ZK_REPLICAS
+          value: {{ .Values.deployment.replicas | quote }}
+        - name : ZK_MIN_HEAP_SIZE
+          valueFrom:
+            configMapKeyRef:
+                name: itom-zookeeper-cm
+                key: jvm.min.heap
+        - name : ZK_MAX_HEAP_SIZE
+          valueFrom:
+            configMapKeyRef:
+                name: itom-zookeeper-cm
+                key: jvm.max.heap
+        - name : ZK_TICK_TIME
+          valueFrom:
+            configMapKeyRef:
+                name: itom-zookeeper-cm
+                key: tick
+        - name : ZK_INIT_LIMIT
+          valueFrom:
+            configMapKeyRef:
+                name: itom-zookeeper-cm
+                key: init
+        - name : ZK_SYNC_LIMIT
+          valueFrom:
+            configMapKeyRef:
+                name: itom-zookeeper-cm
+                key: tick
+        - name : ZK_MAX_CLIENT_CNXNS
+          valueFrom:
+            configMapKeyRef:
+                name: itom-zookeeper-cm
+                key: client.cnxns
+        - name: ZK_SNAP_RETAIN_COUNT
+          valueFrom:
+            configMapKeyRef:
+                name: itom-zookeeper-cm
+                key: snap.retain
+        - name: ZK_PURGE_INTERVAL
+          valueFrom:
+            configMapKeyRef:
+                name: itom-zookeeper-cm
+                key: purge.interval
+        - name: ZK_CLIENT_PORT
+          value: "2181"
+        - name: ZK_SERVER_PORT
+          value: "2888"
+        - name: ZK_ELECTION_PORT
+          value: "3888"
+        - name: ZK_USER_GROUP
+          value: "nom"
+        - name: ZK_LOG_TO_FILE
+          value: "true"
+        - name: ZK_LOG_LEVEL
+          value: "INFO"
+        - name: ZK_SNAPSHOT_TRUST_EMPTY
+          value: "true"
+        - name: ZK_ENABLE_TLS
+          value: "true"
+        - name: ITOM_CDF_SSL_CERTS_DIR
+          value: "/var/run/secrets/boostport.com"
+        - name: ITOM_CDF_EXTERNAL_SSL_CERTS_DIR
+          value: "true"
+        - name: SERVICENAME
+          value: {{ include "helm-lib.serviceName.zookeeper" (dict "Release" .Release "Values" .Values "Template" .Template ) }}
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: POD_NAME
+          value: itom-zookeeper
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: CONTAINER_NAME
+          value: itom-zookeeper
+        volumeMounts:
+        - name: itom-zookeeper-volume
+          mountPath: /opt/zookeeper/data
+        - name: itom-zookeeper-volume
+          mountPath: /opt/zookeeper/datalog
+        - name: itom-zookeeper-log-vol
+          mountPath: /opt/zookeeper/log
+        - name: temp-conf
+          mountPath: /opt/zookeeper/conf
+        {{- if .Values.global.tlsTruststore }}
+        - name: certs-volume
+          mountPath: /opt/zookeeper/certs
+        {{- else }}
+        - name: itom-zookeeper-volume
+          mountPath: /opt/zookeeper/certs
+          subPath: nom/certificates
+        {{- end }}
+        - name: vault-token
+          mountPath: /var/run/secrets/boostport.com
+        - name: temp
+          mountPath: /tmp
+      {{- include "helm-lib.containers.vaultRenew" (dict "Values" .Values) | nindent 6 }}
+      restartPolicy: Always
+      volumes:
+      - name: temp-conf
+        emptyDir: {}
+      - name: itom-zookeeper-volume
+        {{- include "helm-lib.pvcStorage" (dict "claim" "dataVolumeClaim" "Release" .Release "Template" .Template "Values" .Values ) | nindent 8 }}
+      - name: itom-zookeeper-log-vol
+        {{- include "helm-lib.pvcStorage" (dict "claim" "logVolumeClaim" "Release" .Release "Template" .Template "Values" .Values ) | nindent 8 }}
+        {{- if .Values.global.tlsTruststore }}
+      - name: certs-volume
+        configMap:
+          name: {{ .Values.global.tlsTruststore }}
+       {{- end }}
+      - name: vault-token
+        emptyDir: { }
+      - name: temp
+        emptyDir: { }
+      {{- with .Values.nodeSelector }}
+
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

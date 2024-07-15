@@ -1,0 +1,56 @@
+
+global:
+  docker:
+    registry:
+    orgName:
+    imagePullSecret:
+    imagePullPolicy:
+
+  # [DO NOT CHANGE] Global image references.
+  vaultRenew:
+    image:
+    imageTag:
+  vaultInit:
+    image:
+    imageTag:
+
+  securityContext:
+    user:
+    fsGroup:
+
+  database:
+    internal:
+
+  rbac:
+    serviceAccountCreate: true
+    roleCreate: true
+
+deployment:
+  # Deployment (subchart) specific values for DB parameters.  But all should be empty values in this file. Needed for helm-lib
+  database:
+    internal:
+    dbType:
+    dbHost:
+    dbPort:
+    dbTlsEnabled:
+    dbOracleSid:
+    dbOracleConnectionString:
+
+# RBAC
+  rbac:
+    serviceAccount: itom-opsbridge-database-init-sa
+databaseinit:
+  image: itom-opsbridge-database-init
+  imageTag: 1.4.0-37
+  userPasswordList: ""
+  dbaUserPasswordList: ""
+  configMapName: ""
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 192Mi
+

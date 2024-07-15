@@ -1,0 +1,218 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: database-connection-validator-cm
+  annotations:
+    "helm.sh/hook": "pre-install,pre-upgrade"
+    "helm.sh/hook-delete-policy": before-hook-creation
+    "helm.sh/hook-weight": "-9"
+data:
+  {{- if eq .Values.global.database.internal false }}
+
+  {{- if eq .Values.global.database.type "postgresql" }}
+
+  {{- if .Values.idm.deployment.database.dbName }}
+  idm.dbname: {{ .Values.idm.deployment.database.dbName | quote }}
+  {{- else}}
+  idm.dbname: {{ .Values.global.database.dbName | quote }}
+  {{- end }}
+
+  {{- if .Values.bvd.deployment.database.dbName }}
+  bvd.dbname: {{ .Values.bvd.deployment.database.dbName | quote }}
+  {{- else }}
+  bvd.dbname: {{ .Values.global.database.dbName | quote }}
+  {{- end }}
+
+  {{- if .Values.aec.deployment.database.dbName }}
+  aec.dbname: {{ .Values.aec.deployment.database.dbName | quote }}
+  {{- else }}
+  aec.dbname: {{ .Values.global.database.dbName | quote }}
+  {{- end }}
+
+  {{- if .Values.autopass.deployment.database.dbName }}
+  autopass.dbname: {{ .Values.autopass.deployment.database.dbName | quote }}
+  {{- else}}
+  autopass.dbname: {{ .Values.global.database.dbName | quote }}
+  {{- end }}
+
+  {{- if .Values.itomopsbridgemonitoringadmin.deployment.database.dbName }}
+  monitoringadmin.dbname: {{ .Values.itomopsbridgemonitoringadmin.deployment.database.dbName | quote }}
+  {{- else }}
+  monitoringadmin.dbname: {{ .Values.global.database.dbName | quote }}
+  {{- end }}
+  
+  {{- if .Values.itommonitoringsnf.deployment.database.dbName }}
+  monitoringsnf.dbname: {{ .Values.itommonitoringsnf.deployment.database.dbName | quote }}
+  {{- else }}
+  monitoringsnf.dbname: {{ .Values.global.database.dbName | quote }}
+  {{- end }}
+
+  {{- if .Values.credentialmanager.deployment.database.dbName }}
+  credentialmanager.dbname: {{ .Values.credentialmanager.deployment.database.dbName | quote }}
+  {{- else }}
+  credentialmanager.dbname: {{ .Values.global.database.dbName | quote }}
+  {{- end }}
+
+  {{- if .Values.nommetricstransform.deployment.database.dbName }}
+  nommetricstransform.dbname: {{ .Values.nommetricstransform.deployment.database.dbName | quote }}
+  {{- else }}
+  nommetricstransform.dbname: {{ .Values.global.database.dbName | quote }}
+  {{- end }}
+
+  obm.eventdbname: {{ .Values.obm.deployment.eventDatabase.dbName | quote }}
+  obm.mgmtdbname: {{ .Values.obm.deployment.mgmtDatabase.dbName | quote }}
+
+  {{- if .Values.ucmdbserver.deployment.database.dbName }}
+  ucmdb.dbname: {{ .Values.ucmdbserver.deployment.database.dbName | quote }}
+  {{- else}}
+  ucmdb.dbname: {{ .Values.global.database.dbName | quote }}
+  {{- end }}
+
+  {{- end }}
+
+  {{- if .Values.idm.deployment.database.user }}
+  idm.user: {{ .Values.idm.deployment.database.user | quote }}
+  {{- else }}
+  idm.user: {{ .Values.global.database.user | quote }}
+  {{- end }}
+
+  {{- if .Values.bvd.deployment.database.user }}
+  bvd.user: {{ .Values.bvd.deployment.database.user | quote }}
+  {{- else }}
+  bvd.user: {{ .Values.global.database.user | quote }}
+  {{- end }}
+
+  {{- if .Values.aec.deployment.database.user }}
+  aec.user: {{ .Values.aec.deployment.database.user | quote }}
+  {{- else }}
+  aec.user: {{ .Values.global.database.user | quote }}
+  {{- end }}
+
+  {{- if .Values.autopass.deployment.database.user }}
+  autopass.user: {{ .Values.autopass.deployment.database.user | quote }}
+  {{- else }}
+  autopass.user: {{ .Values.global.database.user | quote }}
+  {{- end }}
+
+  {{- if .Values.itomopsbridgemonitoringadmin.deployment.database.user }}
+  monitoringadmin.user: {{ .Values.itomopsbridgemonitoringadmin.deployment.database.user | quote }}
+  {{- else }}
+  monitoringadmin.user: {{ .Values.global.database.user | quote }}
+  {{- end }}
+  
+  {{- if .Values.itommonitoringsnf.deployment.database.user }}
+  monitoringsnf.user: {{ .Values.itommonitoringsnf.deployment.database.user | quote }}
+  {{- else }}
+  monitoringsnf.user: {{ .Values.global.database.user | quote }}
+  {{- end }}
+
+  {{- if .Values.credentialmanager.deployment.database.user }}
+  credentialmanager.user: {{ .Values.credentialmanager.deployment.database.user | quote }}
+  {{- else }}
+  credentialmanager.user: {{ .Values.global.database.user | quote }}
+  {{- end }}
+
+  {{- if .Values.nommetricstransform.deployment.database.user }}
+  nommetricstransform.user: {{ .Values.nommetricstransform.deployment.database.user | quote }}
+  {{- else }}
+  nommetricstransform.user: {{ .Values.global.database.user | quote }}
+  {{- end }}
+
+
+  obm.eventuser: {{ .Values.obm.deployment.eventDatabase.user | quote }}
+  obm.mgmtuser: {{ .Values.obm.deployment.mgmtDatabase.user | quote }}
+
+  {{- if .Values.ucmdbserver.deployment.database.user }}
+  ucmdb.user: {{ .Values.ucmdbserver.deployment.database.user | quote }}
+  {{- else }}
+  ucmdb.user: {{ .Values.global.database.user | quote }}
+  {{- end }}
+
+  {{- end }}
+
+  {{- if or (eq (include "opsb.deployReporting" .) "true") (eq (include "opsb.enableAEC" .) "true") (eq (include "opsb.enableHyperscaleObservability" .) "true") }}
+  vertica.validationDisabled: "false"
+  {{- else }}
+  vertica.validationDisabled: "true"
+  {{- end }}
+
+  {{- if eq (include "opsb.enableOBM" .) "false" }}
+  obm.validationDisabled: "true"
+  {{- else }}
+  obm.validationDisabled: "false"
+  {{- end }}
+
+  {{- if or (eq (include "opsb.enableStakeholderDashboard" .) "true") (eq (include "opsb.enableAgentlessMonitoring" .) "true") (eq (include "opsb.deployReporting" .) "true") (eq (include "opsb.enableHyperscaleObservability" .) "true") (eq (include "opsb.enableAEC" .) "true") }}
+  bvd.validationDisabled: "false"
+  {{- else }}
+  bvd.validationDisabled: "true"
+  {{- end }}
+
+  {{- if or (eq (include "opsb.enableAEC" .) "true")}}
+  aec.validationDisabled: "false"
+  {{- else }}
+  aec.validationDisabled: "true"
+  {{- end }}
+
+  {{- if or (eq (include "opsb.enableAgentlessMonitoring" .) "true") (eq (include "opsb.deployReporting" .) "true") (eq (include "opsb.enableHyperscaleObservability" .) "true") }}
+  monitoring.validationDisabled: "false"
+  {{- else }}
+  monitoring.validationDisabled: "true"
+  {{- end }}
+
+  {{- if or (eq (include "opsb.deployReporting" .) "true") (eq (include "opsb.enableHyperscaleObservability" .) "true") (eq (include "opsb.enableLightHyperscaleObservability" .) "true")}}
+  monitoringsnf.validationDisabled: "false"
+  {{- else }}
+  monitoringsnf.validationDisabled: "true"
+  {{- end }}
+
+  {{- if and (eq (include "opsb.enableHyperscaleObservability" .) "true") (ne .Values.global.database.type "oracle") }}
+  nommetricstransform.validationDisabled: "false"
+  {{- else }}
+  nommetricstransform.validationDisabled: "true"
+  {{- end }}
+
+  {{- if (eq .Values.autopass.deployment.database.userPasswordKey "AUTOPASS_DB_USER_PASSWORD_KEY") }}
+  opsb.useDefaultPasswordKey: "false"
+  {{- else}}
+  opsb.useDefaultPasswordKey: "true"
+  {{- end }}
+
+  {{- if .Values.autopass.deployment.database.userPasswordKey }}
+  autopass.passwordKey: {{ .Values.autopass.deployment.database.userPasswordKey | quote }}
+  {{- end}}
+
+  {{- if .Values.bvd.deployment.database.userPasswordKey }}
+  bvd.passwordKey: {{ .Values.bvd.deployment.database.userPasswordKey | quote }}
+  {{- end}}
+
+  {{- if .Values.aec.deployment.database.userPasswordKey }}
+  aec.passwordKey: {{ .Values.aec.deployment.database.userPasswordKey | quote }}
+  {{- end}}
+
+  {{- if .Values.idm.deployment.database.userPasswordKey }}
+  idm.passwordKey: {{ .Values.idm.deployment.database.userPasswordKey | quote }}
+  {{- end}}
+
+  {{- if .Values.itomopsbridgemonitoringadmin.deployment.database.userPasswordKey }}
+  monitoringadmin.passwordKey: {{ .Values.itomopsbridgemonitoringadmin.deployment.database.userPasswordKey | quote }}
+  {{- end}}
+  
+  {{- if .Values.itommonitoringsnf.deployment.database.userPasswordKey }}
+  monitoringsnf.passwordKey: {{ .Values.itommonitoringsnf.deployment.database.userPasswordKey | quote }}
+  {{- end}}
+
+  {{- if .Values.credentialmanager.deployment.database.userPasswordKey }}
+  credentialmanager.passwordKey: {{ .Values.credentialmanager.deployment.database.userPasswordKey | quote }}
+  {{- end}}
+
+  {{- if .Values.nommetricstransform.deployment.database.userPasswordKey }}
+  nommetricstransform.passwordKey: {{ .Values.nommetricstransform.deployment.database.userPasswordKey | quote }}
+  {{- end}}
+
+  obm.mgmt.passwordKey: {{ (coalesce .Values.obm.deployment.mgmtDatabase.userPasswordKey "OBM_MGMT_DB_USER_PASSWORD_KEY") }}
+  obm.event.passwordKey: {{ (coalesce .Values.obm.deployment.eventDatabase.userPasswordKey "OBM_EVENT_DB_USER_PASSWORD_KEY") }}
+
+  {{- if .Values.ucmdbserver.deployment.database.userPasswordKey }}
+  ucmdbserver.passwordKey: {{ .Values.ucmdbserver.deployment.database.userPasswordKey | quote }}
+  {{- end}}

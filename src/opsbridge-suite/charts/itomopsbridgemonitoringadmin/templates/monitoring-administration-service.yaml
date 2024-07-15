@@ -1,0 +1,31 @@
+{{/*# Copyright 2023 Open Text.*/}}
+
+{{/*# The only warranties for products and services of Open Text and its affiliates*/}}
+{{/*# and licensors ("Open Text") are as may be set forth in the express warranty*/}}
+{{/*# statements accompanying such products and services. Nothing herein should be*/}}
+{{/*# construed as constituting an additional warranty. Open Text shall not be*/}}
+{{/*# liable for technical or editorial errors or omissions contained herein. The*/}}
+{{/*# information contained herein is subject to change without notice.*/}}
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.itomopsbridgemonitoringadmin.capname }}-svc
+  labels:
+    app.kubernetes.io/name: {{ .Values.itomopsbridgemonitoringadmin.capname }}
+    app.kubernetes.io/managed-by: {{ .Values.itomopsbridgemonitoringadmin.managedby }}
+    app.kubernetes.io/version: {{ .Values.itomopsbridgemonitoringadmin.imageTag }}
+    itom.microfocus.com/capability: HyperscaleObservability
+    tier.itom.microfocus.com/backend: backend
+    tier.itom.microfocus.com/frontend: fronend
+    app: {{ .Values.itomopsbridgemonitoringadmin.capname }}-svc
+    
+spec:
+  ipFamilyPolicy: PreferDualStack
+  ports:
+  - port: 8443
+    targetPort: 8443
+    protocol: TCP
+    name: https-rest-api
+  selector:
+    app: {{ .Values.itomopsbridgemonitoringadmin.capname }}

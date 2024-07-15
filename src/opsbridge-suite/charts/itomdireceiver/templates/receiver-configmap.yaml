@@ -1,0 +1,159 @@
+{{/* # */}}
+{{/* # Copyright 2023 Open Text. */}}
+{{/* # */}}
+{{/* # The only warranties for products and services of Open Text and its affiliates and  */}}
+{{/* # licensors (“Open Text”) are as may be set forth in the express warranty statements  */}}
+{{/* # accompanying such products and services. Nothing herein should be construed as */}}
+{{/* # constituting an additional warranty. Open Text shall not be liable for technical or */}}
+{{/* # editorial errors or omissions contained herein. The information contained herein is  */}}
+{{/* # subject to change without notice. */}}
+{{/* # */}}
+{{/* # Except as specifically indicated otherwise, this document contains confidential  */}}
+{{/* # information and a valid license is required for possession, use or copying. If this work  */}}
+{{/* # is provided to the U.S. Government, consistent with FAR 12.211 and 12.212, Commercial Computer  */}}
+{{/* # Software, Computer Software Documentation, and Technical Data for Commercial Items are licensed to */}}
+{{/* # the U.S. Government under vendor’s standard commercial license. */}}
+{{/* # */}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: itom-di-receiver-cm
+data:
+  {{/* ###Performance tuning parameters### */}}
+  {{/* #values for acks can be "0", "1", "all" */}}
+  {{/* #values for compression type can be none|gzip|snappy|lz4 */}}
+  receiver.request.body.maxsize.mb: {{ .Values.direceiver.config.receiver.requestBodyMaxsizeMb | quote }}
+  receiver.compute.threads: {{ .Values.direceiver.config.receiver.computeThreads | quote }}
+  receiver.jvm.args: {{ .Values.direceiver.config.receiver.jvmArgs | quote }}
+
+  {{/* ###Receiver Security parameters### */}}
+  {{/* # auth method values can be  NONE | CLIENT_CERT | IDM | IDM_OR_CLIENT_CERT */}}
+  {{/* # keystore|truststore type can be JKS,PKCS, BCFKS */}}
+  {{/* # server.tls.enabled.protocols values can be comma separated TLS protocols */}}
+  {{/* # Supported TLS protocols are TLSv1.2 */}}
+
+  receiver.auth.method: {{ .Values.direceiver.config.receiver.authMethod | quote }}
+  receiver.security.authorizedRoles: {{ default "di_ingestion" .Values.direceiver.idm.authorizedRoles | quote }}
+  receiver.security.tokenCache.expiryTimeSeconds: {{ default "60" .Values.direceiver.idm.tokenCacheExpiryTimeSeconds | quote }}
+  receiver.security.idm.service.url: {{ .Values.global.idm.idmServiceUrl | quote }}
+  receiver.apikey.refresh.interval.mins: {{ .Values.direceiver.config.receiver.apikeyRefreshIntervalMins | quote }}
+  receiver.protocol: {{ .Values.direceiver.config.receiver.protocol | quote }}
+  receiver.keystore.type: {{ .Values.direceiver.config.receiver.keystoreType | quote }}
+  receiver.truststore.type: {{ .Values.direceiver.config.receiver.truststoreType | quote }}
+  receiver.jar.validate: {{ .Values.direceiver.config.receiver.jarValidate | quote }}
+  receiver.external.jar.enable: {{ .Values.direceiver.config.receiver.externalJarEnable | quote }}
+  receiver.server.tls.enabled.protocols: {{ .Values.direceiver.config.receiver.serverTlsEnabledProtocols | default "TLSv1.2,TLSv1.3"}}
+  receiver.use.external.ca.signed.certs: {{ .Values.direceiver.config.receiver.useExternalCASignedCerts | quote }}
+  {{/* #Properties for Certificate Revocation */}}
+  receiver.cert.revocation.enable: {{ .Values.direceiver.config.receiver.certRevocation.enable | quote }}
+  receiver.cert.revocation.crlfile.enable: {{ .Values.direceiver.config.receiver.certRevocation.crlfileEnable | quote }}
+  receiver.cert.revocation.ocsp.enable: {{ .Values.direceiver.config.receiver.certRevocation.ocspEnable | quote }}
+  receiver.cert.revocation.preferCRL.enable: {{ .Values.direceiver.config.receiver.certRevocation.preferCRLEnable | quote }}
+  receiver.cert.revocation.softfail.enable: {{ .Values.direceiver.config.receiver.certRevocation.softfailEnable | quote }}
+  receiver.fips.enable: {{ .Values.direceiver.config.receiver.fipsEnable | quote }}
+  {{/* #Properties for OCSP */}}
+  ocsp.responderURL: {{ .Values.direceiver.config.oscp.responderURL | quote }}
+  ocsp.responderCertSubjectName: {{ .Values.direceiver.config.oscp.responderCertSubjectName | quote }}
+  ocsp.responderCertIssuerName: {{ .Values.direceiver.config.oscp.responderCertIssuerName | quote }}
+  ocsp.responderCertSerialNumber: {{ .Values.direceiver.config.oscp.responderCertSerialNumber | quote }}
+
+  map.context.to.topic: {{ .Values.direceiver.config.mapContextToTopic | quote }}
+  default.topic: {{ .Values.direceiver.config.defaultTopic | quote }}
+
+  receiver.header.fieldname.for.topic: {{ .Values.direceiver.config.receiver.headerFieldnameForTopic | quote }}
+  receiver.header.fieldname.for.topic.key: {{ .Values.direceiver.config.receiver.headerFieldnameForTopicKey | quote }}
+  receiver.topic.from.header: {{ .Values.direceiver.config.receiver.topicFromHeader | quote }}
+  receiver.message.bus.send.message: {{ .Values.direceiver.config.receiver.messageBusSendMessage | quote }}
+
+  {{/* ###Tenant and namespace related### */}}
+  {{- if .Values.global.di.pulsar }}
+  receiver.pulsar.tenant: {{ coalesce .Values.global.di.pulsar.tenant .Values.global.pulsar.tenant "public" | quote }}
+  receiver.pulsar.namespace: {{ coalesce .Values.global.di.pulsar.namespace .Values.global.pulsar.namespace "default" | quote }}
+  {{- else }}
+  receiver.pulsar.tenant: {{ coalesce .Values.global.pulsar.tenant "public" | quote }}
+  receiver.pulsar.namespace: {{ coalesce .Values.global.pulsar.namespace "default" | quote }}
+  {{- end }}
+
+  {{/* ###Pulsar-Properties### */}}
+  receiver.pulsar.service.name: {{ include "helm-lib.getDiPulsarBrokerHost" . | quote }} 
+
+  {{- if .Values.global.pulsar.brokerServicePort }}
+  receiver.pulsar.broker.service.port: {{ .Values.global.pulsar.brokerServicePort | quote }}
+  {{- else }}
+  receiver.pulsar.broker.service.port: {{ .Values.direceiver.config.pulsar.brokerServicePort | quote }}
+  {{- end }}
+
+  receiver.pulsar.broker.service.port.tls: {{ include "helm-lib.getDiPulsarBrokerClientPort" . | quote }}
+
+  {{- if .Values.global.pulsar.webServicePort }}
+  receiver.pulsar.broker.web.service.port: {{ .Values.global.pulsar.webServicePort | quote }}
+  {{- else }}
+  receiver.pulsar.broker.web.service.port: {{ .Values.direceiver.config.pulsar.webServicePort | quote }}
+  {{- end }}
+
+  receiver.pulsar.broker.web.service.port.tls: {{ include "helm-lib.getDiPulsarBrokerWebPort" . | quote }}
+
+  {{- if .Values.global.pulsar.tlsEnable }}
+  receiver.pulsar.tls.enable: {{ .Values.global.pulsar.tlsEnable | quote }}
+  {{- else }}
+  receiver.pulsar.tls.enable: {{ .Values.direceiver.config.pulsar.tlsEnable | quote }}
+  {{- end }}
+
+  {{- if .Values.global.pulsar.authEnable }}
+  receiver.pulsar.auth.enable: {{ .Values.global.pulsar.authEnable | quote }}
+  {{- else }}
+  receiver.pulsar.auth.enable: {{ .Values.direceiver.config.pulsar.authEnable | quote }}
+  {{- end }}
+
+  {{- if .Values.global.pulsar.authClass }}
+  receiver.pulsar.auth.class: {{ .Values.global.pulsar.authClass | quote }}
+  {{- else }}
+  receiver.pulsar.auth.class: {{ .Values.direceiver.config.pulsar.authClass | quote }}
+  {{- end }}
+
+  {{- if .Values.global.pulsar.tlsHostnameVerification }}
+  receiver.pulsar.tls.hostname.verification: {{ .Values.global.pulsar.tlsHostnameVerification | quote }}
+  {{- else }}
+  receiver.pulsar.tls.hostname.verification: {{ .Values.direceiver.config.pulsar.tlsHostnameVerification | quote }}
+  {{- end }}
+
+  receiver.pulsar.num.io.threads: {{ .Values.direceiver.config.pulsar.numIoThreads | quote }}
+  receiver.pulsar.num.broker.connections: {{ .Values.direceiver.config.pulsar.numBrokerConnections | quote }}
+  receiver.pulsar.keep.alive.interval.seconds: {{ .Values.direceiver.config.pulsar.keepaliveIntervalSeconds | quote }}
+  receiver.pulsar.connection.timeout.millis: {{ .Values.direceiver.config.pulsar.connectionTimeoutMillis | quote }}
+  receiver.pulsar.client.memory.limit.mb: {{ .Values.direceiver.config.pulsar.clientMemoryLimitInMB | quote }}
+  receiver.pulsar.enable.batching: {{ .Values.direceiver.config.pulsar.enableBatching | quote }}
+  receiver.pulsar.batching.max.publish.delay.millis: {{ .Values.direceiver.config.pulsar.batchingMaxPublishDelayMillis | quote }}
+  receiver.pulsar.batching.max.messages: {{ .Values.direceiver.config.pulsar.batchingMaxMessages | quote }}
+  receiver.pulsar.compression.type: {{ .Values.direceiver.config.pulsar.compressionType | quote }}
+  receiver.pulsar.send.timeout.seconds: {{ .Values.direceiver.config.pulsar.sendTimeoutSeconds | quote }}
+  receiver.pulsar.block.if.queue.full: {{ .Values.direceiver.config.pulsar.blockIfQueueFull | quote }}
+  receiver.pulsar.no.retry.if.backlogquota.full: {{ .Values.direceiver.config.pulsar.noRetryIfBacklogquotaFull | quote }}
+  receiver.pulsar.max.pending.messages: {{ .Values.direceiver.config.pulsar.maxPendingMessages | quote }}
+  receiver.pulsar.max.pending.messages.across.partitions: {{ .Values.direceiver.config.pulsar.maxPendingMessagesAcrossPartitions | quote }}
+  receiver.pulsar.batching.max.bytes.in.kb: {{ .Values.direceiver.config.pulsar.batchingMaxBytesInKb | quote }}
+  receiver.java.tls.ciphers.recommended: {{ .Values.global.di.java.tls.ciphers.recommended | quote }}
+  receiver.java.tls.ciphers.optional: {{ .Values.global.di.java.tls.ciphers.optional | quote}}
+  {{- if .Values.global.di.java.tls.ciphers.useJDKDefault }}
+  receiver.java.tls.ciphers.useJDKDefault: {{ .Values.global.di.java.tls.ciphers.useJDKDefault | quote }}
+  {{- end }}
+  receiver.logconfig.from.configmap:  {{ .Values.direceiver.config.receiver.logConfigFromConfigmap | quote}}
+  receiver.keyedmessage.key.json.property.name:  {{ .Values.direceiver.config.receiver.keyedMessage.keyJsonPropertyName | quote}}
+  receiver.keyedmessage.message.json.property.name:  {{ .Values.direceiver.config.receiver.keyedMessage.messageJsonPropertyName | quote}}
+  receiver.keyedmessage.message.key.field.name:  {{ .Values.direceiver.config.receiver.keyedMessage.messageKeyFieldName | quote}}
+  {{- if .Values.direceiver.config.receiver.logConfigFromConfigmap }}
+  receiver.logconfig.log.to.file: {{ .Values.global.di.logging.useFile | quote}}
+  {{- end }}
+  receiver.avro.producer.auto.produce: {{ .Values.direceiver.config.receiver.avroAutoProduce | quote }}
+  receiver.avro.process.complete.msg: {{ .Values.direceiver.config.receiver.processCompleteMsg | quote }}
+  receiver.avro.header.fieldname.for.schema.version: {{ .Values.direceiver.config.receiver.headerFieldnameForSchemaVersion | quote }}
+  receiver.avro.schema.evolution.enabled: {{ .Values.global.di.avroSchemaEvolutionEnabled | quote }}
+  receiver.avro.retry.message.time.secs: {{ .Values.direceiver.config.receiver.retryMessageTimeSecs | quote }}
+  receiver.pulsar.producer.cache.time.interval.seconds: {{ .Values.direceiver.config.receiver.pulsarProducerCacheTimeIntervalInSec | quote }}
+  receiver.pulsar.producer.cache.ttl.seconds: {{ .Values.direceiver.config.receiver.pulsarProducerCacheTimeToLiveInSec | quote }}
+  receiver.pulsar.schema.cache.time.interval.seconds: {{ .Values.direceiver.config.receiver.pulsarSchemaCacheTimeIntervalInSec | quote }}
+  receiver.pulsar.schema.cache.ttl.seconds: {{ .Values.direceiver.config.receiver.pulsarSchemaCacheTimeToLiveInSec | quote }}
+  receiver.multitenant.enabled: {{ .Values.global.di.multiTenantEnabled | quote }}
+  {{- if .Values.direceiver.config.receiver.receiverUserOrg }}
+  receiver.config.org.aware.auth.receiverUserOrg: {{ .Values.direceiver.config.receiver.receiverUserOrg | quote }}
+  {{- end }}

@@ -1,0 +1,44 @@
+{{- if .Values.nginx.ingress.enabled }}
+{{ $namePrefix := include "namePrefix" . }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $namePrefix }}-ingress-controller
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    {{- if or (eq .Values.global.k8sProvider "aws") (eq (.Values.global.cluster).k8sProvider "aws") }}
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/ssl-policy: ELBSecurityPolicy-TLS13-1-2-2021-06
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/group.name: {{ lower (printf "%s-%s" .Release.Name .Values.global.cluster.name) }}
+    alb.ingress.kubernetes.io/listen-ports: {{ (printf "[{\"HTTPS\": %v}]" .Values.nginx.service.httpsPort) | squote }}
+    alb.ingress.kubernetes.io/backend-protocol: HTTPS
+    alb.ingress.kubernetes.io/healthcheck-protocol: HTTPS
+    alb.ingress.kubernetes.io/healthcheck-port: traffic-port
+    alb.ingress.kubernetes.io/healthcheck-path: /
+    alb.ingress.kubernetes.io/success-codes: 200-399
+    {{- if or (eq ((.Values.global.expose).ipConfig).ipFamilyPolicy "PreferDualStack") (eq ((.Values.global.expose).ipConfig).ipFamilyPolicy "RequireDualStack") }}
+    alb.ingress.kubernetes.io/ip-address-type: dualstack
+    {{- end }}
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/certificate-arn: {{ .Values.nginx.ingress.certificateArn }}
+    {{- end }}
+    {{- if .Values.nginx.ingress.additionalAnnotations }}
+    {{- toYaml .Values.nginx.ingress.additionalAnnotations | nindent 4 }}
+    {{- end }}
+spec:
+  tls:
+  - hosts:
+    - {{ .Values.global.externalAccessHost }}
+  rules:
+    - host:
+      http:
+        paths:
+          - backend:
+              service:
+                name: {{ $namePrefix }}-ingress-controller-svc
+                port:
+                  number: {{ coalesce .Values.nginx.service.httpsPort .Values.global.nginx.httpsPort .Values.global.externalAccessPort }}
+            path: /*
+            pathType: ImplementationSpecific
+{{- end }}

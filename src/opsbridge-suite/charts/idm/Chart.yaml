@@ -1,0 +1,9 @@
+apiVersion: v2
+appVersion: 1.40.2-469
+dependencies:
+- name: helm-lib
+  repository: ""
+  version: 1.11.0-4
+description: Micro Focus IDM
+name: idm
+version: 1.40.2-469

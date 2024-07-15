@@ -1,0 +1,257 @@
+{{/*# Copyright 2023 Open Text.*/}}
+
+{{/*# The only warranties for products and services of Open Text and its affiliates*/}}
+{{/*# and licensors ("Open Text") are as may be set forth in the express warranty*/}}
+{{/*# statements accompanying such products and services. Nothing herein should be*/}}
+{{/*# construed as constituting an additional warranty. Open Text shall not be*/}}
+{{/*# liable for technical or editorial errors or omissions contained herein. The*/}}
+{{/*# information contained herein is subject to change without notice.*/}}
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    configmap.reloader.stakater.com/reload: "opsb-cm"
+    deployment.microfocus.com/default-replica-count: "1"
+    deployment.microfocus.com/runlevel: UP
+  name: itom-opsb-content-manager
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: itom-opsb-content-manager-app
+spec:
+  replicas: {{ .Values.contentmanager.config.replicaCount }}
+  selector:
+    matchLabels:
+      app: itom-opsb-content-manager
+  template:
+    metadata:
+      labels:
+        app: itom-opsb-content-manager
+        service: itom-opsb-content-manager-svc
+        app.kubernetes.io/name: itom-opsb-content-manager
+        app.kubernetes.io/managed-by: {{.Release.Name}}
+        app.kubernetes.io/version: {{ .Values.contentmanager.imageTag }}
+        itom.microfocus.com/capability: HyperscaleObservability
+        tier.itom.microfocus.com/backend: backend
+        itom.microfocus.com/description: Content_Manager
+      annotations:
+        {{- if .Values.global.vaultAppRole }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-{{ .Values.global.vaultAppRole }}
+        {{- else }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-default
+        {{- end }}
+        pod.boostport.com/vault-init-container: install
+    spec:
+      securityContext:
+        runAsUser: {{ .Values.global.securityContext.user }}
+        fsGroup: {{ .Values.global.securityContext.fsGroup }}
+      serviceAccountName: {{ .Values.deployment.rbac.serviceAccount }}
+      initContainers:
+      {{- include "helm-lib.containers.vaultInit" (dict "containerName" "install" "certNames" (printf "itom-opsb-content-manager-svc") "Values" .Values) | nindent 6 }}
+      - name: waitforservices
+        image: {{ .Values.global.docker.registry }}/{{ .Values.global.docker.orgName }}/{{ .Values.global.toolsBase.image }}:{{ .Values.global.toolsBase.imageTag }}
+        imagePullPolicy: {{ .Values.global.docker.imagePullPolicy }}
+        command: [ "sh", "-c", "if [[ \"$IS_OPSB_REPORTING\" == \"true\" ]]; then services=\"$BVD_EXPLORE $IDM_ADDR $SO_ENDPOINT $BVD_ENDPOINT\"; elif [[ \"$IS_EVENT_ANALYTICS\" == \"true\" ]]; then services=\"$IDM_ADDR $SO_ENDPOINT\"; elif [[ \"$IS_CLOUD_MONITORING\" == \"true\" ]]; then services=\"$BVD_EXPLORE $IDM_ADDR $SO_ENDPOINT $BVD_ENDPOINT\"; else services=\"\"; fi; for svc in $services; do until nc -z ${svc%:*} ${svc#*:} -w 30; do echo waiting for $svc...; sleep 60; done; done; sleep 60;" ]
+        resources: 
+          limits:
+            cpu: 100m
+            memory: 100Mi
+          requests:
+            cpu: 10m
+            memory: 10Mi    
+        securityContext:
+          runAsUser: {{ .Values.global.securityContext.user }}
+          runAsGroup: {{ .Values.global.securityContext.fsGroup }}
+        env:
+        - name: "IS_CLOUD_MONITORING"
+          valueFrom:
+            configMapKeyRef:
+              key: cloudMonitoring
+              name: opsb-cm
+        - name: "IS_OPSB_REPORTING"
+          valueFrom:
+            configMapKeyRef:
+              key: reporting
+              name: opsb-cm
+        - name: "IS_EVENT_ANALYTICS"
+          valueFrom:
+            configMapKeyRef:
+              key: eventAnalytics
+              name: opsb-cm
+        - name: "IS_STAKEHOLDER_DASHBOARD"
+          valueFrom:
+            configMapKeyRef:
+              key: stakeholderDashboard
+              name: opsb-cm
+        - name: SO_ENDPOINT
+          value: {{ include "helm-lib.getDiAdminHost" . | default .Values.contentmanager.diadminHost }}:{{ include "helm-lib.getDiAdminPort" . | default .Values.contentmanager.diadminPort }}
+        - name: BVD_ENDPOINT
+          value: {{ .Values.contentmanager.bvdHost | default "bvd-www" }}:{{ .Values.contentmanager.bvdPort | default "4000" }}
+        - name: BVD_EXPLORE
+          value: {{ .Values.contentmanager.bvdExploreHost | default "bvd-explore" }}:{{ .Values.contentmanager.bvdExplorePort | default "4000" }}
+        - name: IDM_ADDR
+          value: {{ .Values.global.idm.serviceName | default "itom-idm-svc" }}:{{ .Values.global.idm.internalPort | default "18443" }}
+      containers:
+      - name: itom-opsb-content-manager
+        image: {{ .Values.global.docker.registry }}/{{ .Values.global.docker.orgName }}/itom-monitoring-content-administration-server:{{ .Values.contentmanager.imageTag }}
+        imagePullPolicy: {{ .Values.global.docker.imagePullPolicy }}
+        resources:
+          limits:
+            cpu: 2
+            memory: 1024Mi
+          requests:
+            cpu: 100m
+            memory: 256Mi
+        volumeMounts:
+          - name: vault-token
+            mountPath: /var/run/secrets/boostport.com
+          - name: content-manager-log-volume
+            mountPath: /logs
+            subPath: content-manager/server
+          - name: content-manager-conf-volume
+            mountPath: /contents/{{ .Release.Namespace }}
+            subPath: itom-opsb-content-manager-server/contents
+          - name: content-manager-conf-volume
+            mountPath: /collections/{{ .Release.Namespace }}
+            subPath: itom-opsb-content-manager-server/collections
+          - name: content-manager-conf-volume
+            mountPath: /var/opt/OV/datafiles
+            subPath: co/oa/oa1/conf/OV/datafiles
+        env:
+          - name: CAS_VERSION
+            valueFrom:
+              configMapKeyRef:
+                key: version
+                name: opsb-cm
+          - name: "CDF_NAMESPACE"
+            value: {{ .Release.Namespace | quote }}
+          {{- if .Values.global.vaultAppRole }}
+          - name: "VAULT_ROLE_ID"
+            value: {{ .Values.global.vaultRoleId | quote }}
+          - name: "VAULT_APP_ROLE"
+            value: {{ .Values.global.vaultAppRole | quote }}
+          {{- end }}
+          - name: ENABLE_TLS
+            value: "false"
+          - name: BVD_Protocol
+            value: {{ .Values.global.bvdProtocol | default "https" | quote }}
+          - name: BVD_Hostname
+            value: {{ .Values.contentmanager.bvdHost | quote }}
+          - name: BVD_Port
+            value: {{ .Values.contentmanager.bvdPort | quote }}
+          - name: "EXTERNALNAME"
+            value: {{ .Values.global.externalAccessHost | quote }}
+          - name: "EXTERNALPORT"
+            value: {{ .Values.global.externalAccessPort | quote  }}
+          - name: "VAULT_SECRET_DIR"
+            value: /var/run/secrets/boostport.com
+          - name: MY_NODE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName
+          - name: MY_POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: MY_POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          - name: MY_POD_IP
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIP
+          - name: MY_CONTAINER_NAME
+            value: itom-opsb-content-manager
+          - name: SO_ENDPOINT
+            value: {{ .Values.global.diProtocol | default "https" }}://{{ include "helm-lib.getDiAdminHost" . | default .Values.contentmanager.diadminHost }}:{{ include "helm-lib.getDiAdminPort" . | default .Values.contentmanager.diadminPort }}
+          - name: OPSB_CONTENT_ADMIN_SERVER_PORT
+            value: "9000"
+          - name: HTTP_CLIENT
+            value: "https"
+          - name: DEFAULT_HTTP_TIMEOUT
+            value: {{ .Values.contentmanager.config.defaultHTTPTimeout | quote }}
+          - name: OPTIC_DL_AUTH_MODE
+            value: {{ .Values.global.idm.opticDlAuthMode | default "IDM" | quote }}
+          - name: IDM_ADMIN_KEY
+            value: {{ .Values.global.idm.integrationUserKey | default "idm_integration_admin_password" | quote }}
+          - name: IDM_ADMIN_USER
+            value: {{ .Values.global.idm.integrationUser | default "integration_admin" | quote }}
+          - name: IDM_ADDR
+            value: https://{{ .Values.global.idm.serviceName }}:{{ .Values.global.idm.internalPort }}
+          - name: V3_API_SUPPORT
+            value: {{ .Values.global.contentmanager.v3ApiSupport | default "csvFileIngestionConfiguration,csvFileLoadConfiguration,dataRetentionConfiguration,dataSetConfiguration,aggregateConfiguration,timeSeriesForecastConfiguration,taskFlowConfiguration,dataSetFlowControl" | quote }}
+          - name: OPTIC_MAX_CONCURRENCY_LIMIT
+            value: {{ .Values.global.contentmanager.opticMaxConcurrencyLimit | default "5" | quote }}
+          - name: OPTIC_API_VERSION
+            value: {{ .Values.global.contentmanager.opticApiVersion | default "v3" | quote }}
+         {{ if eq (((.Values.global.services.opticDataLake).deploy) | toString) "false" }}
+          - name: OPTIC_DL_INTERNAL
+            value: "false"
+          - name: OPTIC_IDM_ADDR
+            value: https://{{ include "helm-lib.getExternalIdmHost" . | default .Values.global.idm.serviceName }}:{{ include "helm-lib.getExternalIdmPort" . | default .Values.global.idm.internalPort }}
+         {{ if ((((.Values.global.services).opticDataLake).externalOpticDataLake).integrationUser) }}
+          - name: OPTIC_IDM_ADMIN_USER
+            value: {{ .Values.global.services.opticDataLake.externalOpticDataLake.integrationUser | default "integration_admin" | quote }}
+          - name: OPTIC_IDM_ADMIN_KEY
+            value: {{ .Values.global.services.opticDataLake.externalOpticDataLake.integrationPasswordKey | default "idm_integration_admin_password" | quote }}
+         {{ end }}
+         {{ else }}
+          - name: OPTIC_DL_INTERNAL
+            value: "true"
+          - name: OPTIC_IDM_ADMIN_KEY
+            value: {{ .Values.global.idm.integrationUserKey | default "idm_integration_admin_password" | quote }}
+          - name: OPTIC_IDM_ADMIN_USER
+            value: {{ .Values.global.idm.integrationUser | default "integration_admin" | quote }}
+          - name: OPTIC_IDM_ADDR
+            value: https://{{ .Values.global.idm.serviceName }}:{{ .Values.global.idm.internalPort }}
+         {{ end }}
+          - name: "CONTENT_SIZE"
+            value: "50"
+          - name: "IS_CLOUD_MONITORING"
+            valueFrom:
+              configMapKeyRef:
+                key: cloudMonitoring
+                name: opsb-cm
+          - name: "IS_OPSB_REPORTING"
+            valueFrom:
+              configMapKeyRef:
+                key: reporting
+                name: opsb-cm
+          - name: "IS_EVENT_ANALYTICS"
+            valueFrom:
+              configMapKeyRef:
+                key: eventAnalytics
+                name: opsb-cm
+          - name: "IS_STAKEHOLDER_DASHBOARD"
+            valueFrom:
+              configMapKeyRef:
+                key: stakeholderDashboard
+                name: opsb-cm
+          - name: IDM_TENANT_NAME
+            value: {{ .Values.global.idm.tenant | default "Provider" | quote }}
+          - name: UIF_URL
+            value: {{ .Values.contentmanager.bvdExploreProtocol | default "https" }}://{{ .Values.contentmanager.bvdExploreHost }}:{{ .Values.contentmanager.bvdExplorePort }}
+          {{ if eq (((.Values.global.idm).orgAware) | toString) "true" }}
+          - name: IDM_TARGET_TENANT_NAME
+            value: {{ .Values.global.idm.additionalSeededOrg.name | default "Provider" | quote }}
+          {{ end }}
+          - name: COSO_OOTB_CATEGORY
+            value: "factoryShipped"
+          - name: ALLOW_SELF_SIGNED_CERT
+            value: {{ .Values.contentmanager.config.allowSelfSignedCert | quote }}
+            
+      {{- include "helm-lib.containers.vaultRenew" (dict "containerName" "kubernetes-vault-renew" "Values" .Values) | nindent 6 }}
+          
+      {{- with (coalesce .Values.nodeSelector .Values.global.nodeSelector) }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:   
+      - name: vault-token
+        emptyDir:
+          medium: "Memory"
+      - name: content-manager-log-volume
+        {{- include "helm-lib.pvcStorage" (dict "claim" "logVolumeClaim" "Release" .Release "Template" .Template "Values" .Values ) | nindent 8 }}
+      - name: content-manager-conf-volume
+        {{- include "helm-lib.pvcStorage" (dict "claim" "configVolumeClaim" "Release" .Release "Template" .Template "Values" .Values ) | nindent 8 }}

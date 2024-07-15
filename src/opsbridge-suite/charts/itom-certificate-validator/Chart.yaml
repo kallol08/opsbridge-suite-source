@@ -1,0 +1,9 @@
+apiVersion: v2
+appVersion: 1.2.0
+dependencies:
+- name: helm-lib
+  repository: https://orgartifactory.swinfra.net/artifactory/itom-helm-charts-stable
+  version: 1.9.0-4
+description: Helm chart for validating certificate format
+name: itom-certificate-validator
+version: 1.2.37

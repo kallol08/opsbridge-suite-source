@@ -1,0 +1,250 @@
+# Default values for fluentbit.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# Consuming charts can declare a namePrefix which will cause all names (service names, deployment names, etc.)
+# to be prefixed with the specified value, instead of default "itom" prefix.  This enables multiple
+# instances of the chart in a single namespace.
+# default value is itom
+namePrefix:
+
+# Consuming charts can declare they want backwards-compatible service name, i.e. prefixed with
+# Helm "Release.Name".
+#
+backwardsCompatServiceName: false
+
+deployment:
+  rbac:
+    # logrotate rbac serviceAccount name
+    serviceAccountName: ""
+  # logrotate deployment toleration
+  tolerations: []
+  instances: []
+# - name: collector
+#   configSelector:
+#      labelName: deployment.microfocus.com/fluentbit-config
+#      labelValue: true
+
+daemonSet:
+  configSelector:
+    # labels name need to be collected
+    labelName: deployment.microfocus.com/fluentbit-config-infra
+    # labels value need to be collected
+    labelValue: true
+
+  # fluentbit daemonSet toleration
+  tolerations: []
+
+  # filter log collections trough namespace
+  namespaceFilter:
+    # namespaces of logs need to be collect.  Delimiter by ','.  Exmples: "core,demo,kube-system"
+    includes:
+
+global:
+  #  vaultApprole: baseInfra
+  docker:
+    # set the global.docker.registry and orgName to your internal Docker registry/org
+    registry: localhost:5000
+    orgName: hpeswitomsandbox
+    imagePullSecret: ""
+    imagePullPolicy: IfNotPresent
+
+  logrotate:
+    # logrotate image information
+    image: itom-logrotate
+    imageTag: 4.16.0-0026
+
+  k8sSidecar:
+    image: itom-k8s-sidecar
+    imageTag: 1.6.0-0029
+
+  # User ID and group ID to run as
+  securityContext:
+    user: 1999
+    fsGroup: 1999
+
+  rbac:
+    # Specifies whether a ServiceAccount should be created
+    serviceAccountCreate: true
+    # Specifies whether RBAC resources should be created
+    roleCreate: true
+    # Specifies whether a clusterRole should be created
+    clusterRoleCreate: true
+
+  cluster:
+    ## classic: cdf cdf-aws cdf-azure,  BYOK: aws azure gcp generic openshift
+    # k8s provider name
+    k8sProvider: "cdf"
+    # cluster name
+    name: "cluster"
+    # cluster toleration
+    tolerations: []
+
+  #  rbac:
+  #    # Specifies whether RBAC resources should be created
+  #    create: true
+
+  # persistence.enabled=true means that the PVCs are expected to be dynamically created by the composition chart
+  # Otherwise, persistence.dataVolumeClaim is a persistent volume claim for storing data files.
+  # If all of the above are undefined, then temporary ephemeral storage will be created (only if isDemo=true).
+  persistence:
+    enabled: true
+    dataVolumeClaim:
+    logVolumeClaim:
+
+  proxy:
+    # proxy used to access external internet if needed
+    httpsProxy:
+    httpProxy:
+    noProxy:
+
+configurations:
+  # secretName is used to define the names of secret which stores password or auth token.
+  secretNames: itom-fluentbit-receiver
+  # configmapNames is used to define the names of configmaps which store config of fluentbit,
+  # Delimiter by ','.  Exmples: "itom-fluentbit,itom-fluentbit1,itom-fluentbit2".
+  configmapNames: itom-fluentbit
+
+
+fluentbit:
+  # fluentbit image information
+  image: itom-fluentbit
+  imageTag: 1.5.0-0068
+
+logging:
+  # labels user may need to use
+  labels: {}
+  # when use rewrite tag plugin, EmitterMemBufLimit is the limit of memory buffer
+  EmitterMemBufLimit: 300M
+  cri:
+    # runtime name
+    name:
+  input:
+    hostLogDir:
+      varLog: /var/log
+      # to define the runtime log position, it is necessary in cloud environment.
+      runtimeLog: /var/lib/docker/containers
+    # to define log position file and cache files directory
+    dataDir: /var/log/fluentbit
+  output:
+    # define the total limit size of output storage, default size is 1GB.
+    storageLimitSize: 1024m
+    receiver:
+      # define receiver type.
+      # file: indicates that CDF exports the logs to an NFS server
+      # elasticsearch : indicates that CDF exports the logs to Elasticsearch
+      # oba : indicates that CDF exports the logs to Operations Bridge Analytics (OBA)
+      # splunk : indicates that CDF exports the logs to splunk
+      # stdout : indicates that CDF exports the logs to the standard output
+      type: "file"
+
+      # for type is file, format is needed.
+      # format allowed value: 'template' ,'csv' or 'json', default is 'csv'
+      # when format is 'template', Template is needed.
+      # when format is 'csv' or 'json', delimiter is needed.
+      # note that template is only work for container logs but not system logs when fluentbit running as an daemonset.
+      # Once format is set to be 'template', the system logs format will be default as 'csv'.
+      format: "csv"
+      # delimiter allowed value: ','  ':'  '#'  ' '  '\t', default is ','
+      delimiter: ","
+      # Only the following values can be used in template :{log},{node},{time},{namespace_name},{pod_name},{container_name}
+      # example: template {time} msg={log} node={node} namespace={namespace_name}
+      template: "{log}"
+
+      # for type is oba/elasticsearch/splunk
+      # http/https receiver URL
+      url:
+      # user of http/https receiver url
+      user:
+      # password of http/https receiver url
+      password:
+      passwordKey:
+      # token of http/https receiver url
+      token:
+      # open TLS verify if ca will be offered. Default to be 'On'.
+      tlsVerify: "On"
+      # Content of CA certificate of log receiver
+      caCert:
+
+      elasticSearch:
+        # ElasticSearch index value.
+        index: fluentbit
+        # ElasticSearch Major Version will be acquired automatically.
+        # define the output log time format, recommend use the default vault
+        logTimeFormat: "%Y-%m-%dT%H:%M:%S.%9N%z" # DO NOT CHANGE
+
+        # Following can only be chosen one to fill in.
+        # ElasticSearch on AWS config
+        aws:
+          awsAuth:
+          awsRegion:
+        # ElasticSearch cloud config
+        esCloud:
+          cloudId:
+
+      oba:
+        # define the output log time format, recommend use the default vault
+        logTimeFormat: "%Y-%m-%d %H:%M:%S.%3N%z"
+  properties:
+    # file types can be accepts from fluentbit resource.
+    INCLUDED_TYPES: log xml txt # DO NOT CHANGE
+    # numbers threads
+    NUM_THREADS: 8
+    # numbers replicas used by elasticsearch
+    NUM_OF_REPLICAS: 1
+    # numbers shards used by elasticsearch
+    NUM_OF_SHARDS: 5
+    # the size of each buffer chunk. The default is 8m. The suffixes "k" (KB), "m" (MB), and "g" (GB) can be used.
+    # please see the Buffer Plugin Overview article for the basic buffer structure.
+    BUFFER_CHUNK_LIMIT: 256m
+    # the length limit of the chunk queue. Please see the Buffer Plugin Overview article for the basic buffer structure.
+    # the default limit is 64 chunks.
+    BUFFER_QUEUE_LIMIT: 128
+    # the interval between buffer chunk flushes.
+    # default: 60
+    FLUSH_INTERVAL: 3s
+    # the interval to refresh the list of watch files. This is used when the path includes *.
+    REFRESH_INTERAL: 5
+
+# We usually recommend not to specify default resources and to leave this as a conscious
+# choice for the user. This also increases chances charts run on environments with little
+# resources, such as Minikube. If you do want to specify resources, uncomment the following
+# lines, adjust them as necessary, and remove the curly braces after 'resources:'.
+resources:
+  limits:
+    cpu: 1000m
+    memory: 5Gi
+  requests:
+    cpu: 25m
+    memory: 50Mi
+
+logrotate:
+  # Max reserved logs file numbers
+  rotateNum: 2
+  # Max reserved logs file size
+  rotateSize: 100M
+  # Max retention days from last modified. once reach the rotateRetention, related file will be removed from logVolume
+  rotateRetention: 2
+  # labels user may need to use
+  labels: {}
+  # Logrotate properties
+  properties:
+    # Script delete exceptions message
+    SCRIPT_DELETE_EXCEPTIONS: "scripts/install scripts/upgrade audit"
+    # Files will be removed if it meets the configured rule. For example, "-mtime +2" means it will remove the logs that last for more than 2 days.
+    # "-size +51200k" means it will remove the logs, whose size is larger than 51200 KB. For format, refer to Linux command "find".
+    SCRIPT_DELETE_LOG_SURVIVAL: "-mtime +2 -or -size +51200k"
+    # The interval of file check for delete. The supported formats: @hourly, @daily, @weekly, @monthly @yearly or like "0 0 * * * *"(the cron job format).
+    # A brief introduction is as follows. You can refer https://godoc.org/github.com/robfig/cron For more details.
+    SCRIPT_DELETE_CRONINTERVAL: "0 */10 * * * *"
+    # Files that need to be rotated under "/var/log". Each file name must be separated by a white-space character. By default, it is "messages".
+    SYSLOG_ROTATE_FILES: "messages"
+    # The rotate interval of the system log files. For example, every hourly, daily, weekly, monthly, or yearly. By default, it is "daily".
+    SYSLOG_ROTATE_INTERVAL: "daily"
+    # Log files are rotated when the files are larger than the specified size or before the system logs are being rotated within the specified time interval.
+    # By default, it is "500M".
+    SYSLOG_MAX_SIZE_OF_FILE: 500M
+    # The log rotated time before the files are being removed. If it is 0, old versions are removed rather than rotated. By default, it is 1.
+    SYSLOG_MAX_ROTATE_OF_FILE: 1
+    # The rotate mode of the log file. By default, logrotate uses "copytruncate" mode.
+    SYSLOG_ROTATE_MODE: "copytruncate"
