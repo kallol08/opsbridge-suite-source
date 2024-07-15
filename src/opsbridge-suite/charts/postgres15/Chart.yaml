@@ -1,0 +1,15 @@
+apiVersion: v2
+appVersion: 15-00178
+dependencies:
+- name: helm-lib
+  repository: '@itomsandbox'
+  version: 1.9.0-14
+description: Micro Focus Postgres Database
+keywords:
+- database
+- postgres
+maintainers:
+- email: robert.balser@microfocus.com
+  name: robert
+name: postgres15
+version: 1.0.27

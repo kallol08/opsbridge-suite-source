@@ -1,0 +1,9 @@
+apiVersion: v2
+appVersion: 3.0.35
+dependencies:
+- name: helm-lib
+  repository: ""
+  version: 1.8.0-33
+description: Open Text Network Operations Management - COSO Data Access
+name: itomnomcosodataaccess
+version: 3.0.35

@@ -1,0 +1,191 @@
+{{- $namePrefix := include "namePrefix" . -}}
+{{- $defaultResourceConfig := include "ucmdb.defaultResourceConfig" . | fromYaml -}}
+{{- $replicaCount := coalesce .Values.deployment.replicaCount $defaultResourceConfig.replicaCount -}}
+{{- $installVersion := include "ucmdb.installVersion" (dict "name" (printf "%s-cms-gateway" ($namePrefix)) "default" "11.6.6.51" "Chart" .Chart "Release" .Release) -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ printf "%s-cms-gateway" ($namePrefix) }}
+  labels:
+    name: {{ .Chart.Name }}
+    installed-version: {{ $installVersion | quote }}
+    {{- include "ucmdb.labels" . | nindent 4 }}
+  annotations:
+    {{- include "ucmdb.deployment.annotations" (dict "replicaCount" $replicaCount "Values" .Values) | nindent 4 }}
+spec:
+  replicas: {{ $replicaCount }}
+  strategy:
+    rollingUpdate:
+      maxSurge: {{ .Values.rollingUpdate.maxSurge }}
+      maxUnavailable: {{ .Values.rollingUpdate.maxUnavailable }}
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "ucmdb.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        name: {{ .Chart.Name}}
+        {{- include "ucmdb.labels" . | nindent 8 }}
+      annotations:
+        {{- include "ucmdb.pod.annotations" . | nindent 8 }}
+        checksum/config: {{ include (print $.Template.BasePath "/gateway-configmap.yaml") . | sha256sum }}
+    spec:
+      {{- with (coalesce .Values.nodeSelector .Values.global.nodeSelector) }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.global.docker.imagePullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.global.docker.imagePullSecret }}
+      {{- end }}
+      serviceAccount: {{ template "ucmdb.serviceAccountName" . }}
+      serviceAccountName: {{ template "ucmdb.serviceAccountName" . }}
+      {{- include "ucmdb.affinity.inject" . | nindent 6 }}
+      securityContext:
+        {{- include "ucmdb.pod.securityContext" . | nindent 8 }}
+      initContainers:
+      {{- include "helm-lib.waitForVault" . | nindent 6  }}
+      {{- include "helm-lib.containers.vaultInit" (dict "commonName" (printf "%s-cms-gateway-svc" ($namePrefix)) "Values" .Values) | nindent 6 }}
+      containers:
+      {{- include "helm-lib.containers.vaultRenew" (dict "containerName" "kubernetes-vault-renew" "Values" .Values) | nindent 6 }}
+      - name: {{ printf "%s-cms-gateway" ($namePrefix) }}
+        image: {{ .Values.global.docker.registry}}/{{ include "ucmdb.docker.orgName" . }}/{{ .Values.gateway.imageName}}:{{ .Values.gateway.imageTag }}
+        imagePullPolicy: {{ .Values.global.docker.imagePullPolicy }}
+        resources:
+          {{- coalesce .Values.resources $defaultResourceConfig.resources | toYaml | nindent 10 }}
+        securityContext:
+          {{- include "ucmdb.container.securityContext" . | nindent 10 }}
+        livenessProbe:
+          httpGet:
+            path: {{ .Values.deployment.node.context }}/urest/v1/ping
+            port: {{ .Values.deployment.node.httpsPort }}
+            scheme: HTTPS
+          initialDelaySeconds: 600
+          timeoutSeconds: 10
+          successThreshold: 1
+          failureThreshold: 6
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            port: {{ .Values.deployment.node.httpsPort }}
+            path: {{ .Values.deployment.node.context }}/urest/v1/readiness
+            scheme: HTTPS
+          initialDelaySeconds: 30
+          timeoutSeconds: 10
+          successThreshold: 1
+          failureThreshold: 2
+          periodSeconds: 30
+        env:
+          {{- include "ucmdb.env" . | nindent 10 }}
+          - name: suite
+            value: "true"
+          - name: TZ
+            value: {{ .Values.global.cms.timeZone | quote }}
+          - name: GATEWAY_ENABLE_HA
+            value: {{ .Values.deployment.node.enableHA | quote}}
+          {{- /* debug */}}
+          - name: GATEWAY_ENABLE_DEBUG
+            value: {{ .Values.global.cms.debug | quote}}
+          - name: GATEWAY_ENABLE_SWAGGER
+            value: {{ .Values.deployment.node.enableSwagger | quote}}
+        {{- if and .Release.IsUpgrade (include "ucmdb.versionConvertor" (dict "version" $installVersion) | semver | (semver "11.6.7-0").Compare | eq 1) }}
+          {{- /* gateway db config */}}
+          {{- $dbTlsEnabled := coalesce (quote .Values.deployment.database.tlsEnabled) (quote .Values.global.database.tlsEnabled) }}
+          {{- $dbCreateDb := eq "true" (include "helm-lib.dbCreateDb" . | lower ) }}
+          {{- $internalDb := .Values.global.database.internal }}
+          {{- $dbEnabled := .Values.deployment.database.enabled }}
+          {{- /* gateway oracle config */}}
+          {{- $dbType := include "helm-lib.dbType" . }}
+          {{- $isOracle := eq "oracle" (lower $dbType) }}
+          {{- if $isOracle }}
+          - name: ORACLE_SSL_ENABLED
+            value: {{ $dbTlsEnabled }}
+          {{- end }}
+          - name: GATEWAY_IS_INTERNAL_DB
+            value: {{ $internalDb | quote }}
+          {{- if and $dbEnabled $dbCreateDb }}
+          - name: GATEWAY_DB_ADMIN_USER
+            value: {{ include "helm-lib.dbAdmin" . | quote }}
+          - name: GATEWAY_DB_ADMIN_PASSWORD_SECRET_KEY
+            value: {{ include "helm-lib.dbAdminKey" . | quote }}
+          {{- end }}
+          - name: GATEWAY_DB_PASSWORD_SECRET_KEY
+            value: {{ include "helm-lib.dbUserKey" . | quote }}
+          {{- $oracleEncWallet := coalesce .Values.deployment.database.oracleEncWallet .Values.global.database.oracleEncWallet | quote }}
+          - name : CMS_DB_ENC_WALLET
+            value: {{ $oracleEncWallet }}
+          - name : CMS_DB_WALLET_PWD_KEY
+            value: {{ .Values.deployment.database.walletPasswordKey | quote}}
+        {{- end }}
+          - name: ENABLE_FIPS
+            value: {{ .Values.global.enableFIPS | quote }}
+          {{- /* gateway ucmdb config */}}
+          - name: GATEWAY_UCMDB_PASSWORD_SECRET_KEY
+            value: {{ .Values.global.cms.secrets.UISysadmin | quote}}
+          {{- if .Values.deployment.secretStorage }}
+          - name: SECRET_STORAGE
+            value: {{ .Values.deployment.secretStorage | quote }}
+          {{- end }}
+          {{- if and (eq .Values.deployment.secretStorage "k8s") (.Values.deployment.secretStorageName) }}
+          - name: SECRET_STORAGE_NAME
+            value: {{ .Values.deployment.secretStorageName | quote}}
+          {{- end }}
+          {{- if .Values.deployment.log.size }}
+          - name: LOG_MAX_SIZE
+            value: {{ .Values.deployment.log.size | quote }}
+          {{- end }}
+          {{- if .Values.deployment.log.rotate }}
+          - name: LOG_BACKUP_COUNT
+            value: {{ .Values.deployment.log.rotate | quote }}
+          {{- end }}
+          {{- if .Values.deployment.log.compress }}
+          - name: LOG_COMPRESS
+            value: {{ .Values.deployment.log.compress | quote }}
+          {{- end }}
+          - name: NODE_PARAM
+            value: --max-old-space-size=4096 --diagnostic-dir=/cms-gateway/runtime/logs/ --heapsnapshot-near-heap-limit=1
+        ports:
+        {{- if .Values.deployment.node.enableHttp }}
+        - containerPort: {{ .Values.deployment.node.httpPort }}
+          name: http
+        {{- end }}
+        - containerPort: {{ .Values.deployment.node.httpsPort }}
+          name: https
+        volumeMounts:
+        - name: config
+          mountPath: /cms-gateway/conf.d
+          readOnly: true
+        - name: log-vol
+          mountPath: /cms-gateway/runtime/logs
+          subPath: cms-gateway
+        - name: config-vol
+          mountPath: /cms-gateway/.conf.m
+          subPath: cms-gateway
+        - name: data-vol
+          mountPath: /cms-gateway/data
+          subPath: cms-gateway
+        - name: vault-token
+          mountPath: /var/run/secrets/boostport.com
+        - name: cert-dir
+          mountPath: /cms-gateway/ssl/ca/external
+        lifecycle:
+          preStop:
+            exec:
+              command: ["/cms-gateway/bin/stopGateway.sh"]
+      volumes:
+      - name: log-vol
+        {{- include "helm-lib.pvcStorage" (dict "claim" "logVolumeClaim" "Release" .Release "Template" .Template "Values" .Values ) | nindent 8 }}
+      - name: config-vol
+        {{- include "helm-lib.pvcStorage" (dict "claim" "configVolumeClaim" "Release" .Release "Template" .Template "Values" .Values ) | nindent 8 }}
+      - name: data-vol
+        {{- include "helm-lib.pvcStorage" (dict "claim" "dataVolumeClaim" "Release" .Release "Template" .Template "Values" .Values ) | nindent 8 }}
+      - name: vault-token
+        emptyDir: {}
+      - name: cert-dir
+        configMap:
+          name: {{ .Values.global.database.tlsTruststore }}
+      - name: config
+        configMap:
+          name: {{ printf "%s-cms-gateway-configmap" ($namePrefix) }}

@@ -1,0 +1,21 @@
+{{ $namePrefix := include "namePrefix" . }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $namePrefix }}-ingress-controller-conf
+  namespace: {{ .Release.Namespace }}
+data:
+  {{ $minVersion := include "helm-lib.getTlsMinVersion" .}}
+  ssl-protocols: {{ if eq $minVersion "TLSv1.2" }}"TLSv1.2 TLSv1.3"{{ else }}"TLSv1.3"{{ end }}
+  ssl-ciphers: {{ include "helm-lib.getTlsCiphers" (dict "Values" .Values "separator" ":" "format" "openssl") }}
+  {{- with .Values.nginx.configuration }}
+  {{- toYaml . | nindent 2 }}
+  {{- end }}
+---
+{{- if and .Values.nginx.service.external.clientCertAuthPort (eq .Values.nginx.service.external.sslClientCertCAsCM "pki-auth-ca-certificates") }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pki-auth-ca-certificates
+data:
+{{- end }}

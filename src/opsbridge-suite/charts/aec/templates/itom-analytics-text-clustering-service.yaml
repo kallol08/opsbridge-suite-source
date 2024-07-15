@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: itom-analytics-text-clustering-svc
+  namespace:  {{ .Release.Namespace }}
+  labels:
+    app: itom-analytics-text-clustering-server
+    {{- $args := dict "NameSuffix" "text-clustering-svc" "Version" .Values.aecImages.clusteringServer.imageTag "Component" "text-clustering" "HelmRelease" .Release.Name "Chart" .Chart }}
+    {{- template "aec.defaultLabels" $args }}
+spec:
+  type: ClusterIP
+  sessionAffinity: ClientIP
+  ports:
+  - name: server
+    port: 8443
+    targetPort: 8443
+  - name: prometheus-metrics
+    port: 8080
+    targetPort: 8080
+  selector:
+    app: itom-analytics-text-clustering-server

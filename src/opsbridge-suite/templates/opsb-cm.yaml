@@ -1,0 +1,194 @@
+{{- $rep := include "opsb.deployReporting" . -}}
+{{- $aec := include "opsb.enableAEC" . -}}
+{{- $bvd := include "opsb.enableStakeholderDashboard" . -}}
+{{- $cm := include "opsb.enableHyperscaleObservability" . -}}
+{{- $mcc := include "opsb.enableAgentlessMonitoring" . -}}
+{{- $stm := include "opsb.enableApplicationMonitoring" . -}}
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opsb-cm
+  annotations:
+    "helm.sh/hook": "pre-install,pre-upgrade"
+    "helm.sh/hook-delete-policy": before-hook-creation
+    "helm.sh/hook-weight": "-10"
+data:
+  version: {{.Chart.Version | quote}}
+  appVersion: {{.Chart.AppVersion | quote}}
+
+  {{- include "helm-lib.confirmEula" . | nindent 2 }}
+
+  reporting: {{coalesce $rep "false" | quote }}
+  eventAnalytics: {{coalesce $aec "false" | quote }}
+  stakeholderDashboard: {{coalesce $bvd "false" | quote }}
+  cloudMonitoring: {{coalesce $cm "false" | quote }}
+  monitoringControlCenter: {{coalesce $mcc "false" | quote }}
+  agentlessMonitoring: {{coalesce $mcc "false" | quote }}
+  applicationMonitoring: {{coalesce $stm "false" | quote }}
+
+{{/*  # Ensure that global.externalAccessHost (hostname/FQDN) is always in lower case letters. */}}
+  {{- if not (eq .Values.global.externalAccessHost (lower .Values.global.externalAccessHost)) }}
+  {{- fail "Error: Provide the hostname/FQDN (global.externalAccessHost) in lower case only" }}
+  {{- end }}
+  
+{{/*  # Ensure global.rbac.clusterRoleCreate is always true in AWS until support for false is included in the product */}}
+  {{- if (and (eq .Values.global.cluster.k8sProvider "aws") (not .Values.global.rbac.clusterRoleCreate) ) }}
+  {{- print "Warning: Certain functionalities will not be available on AWS if the configuration global.rbac.clusterRoleCreate is set to false. Refer to documentation for more details" }}
+  {{- end }}
+
+  {{- if or (eq (include "opsb.enableAgentlessMonitoring" .) "true") (eq (include "opsb.deployReporting" .) "true") (eq (include "opsb.enableHyperscaleObservability" .) "true") (eq (include "opsb.enableApplicationMonitoring" .) "true") }}
+  enableRedisForConfigurationAdmin: "true"
+  {{- else }}
+  enableRedisForConfigurationAdmin: "false"
+  {{- end }}
+  enableSISForConfigurationAdmin: {{ coalesce (include "opsb.enableAgentlessMonitoring" .) "false" | quote }}
+  enableAPMForConfigurationAdmin: {{ coalesce (include "opsb.enableApplicationMonitoring" .) "false" | quote }}
+  
+  {{- if and (eq .Values.global.cms.externalOBM false) (ne .Values.global.cms.secrets.UISysadmin "ucmdb_uisysadmin_password") }}
+  {{- fail "Error: For internal obm , please use ucmdb_uisysadmin_password as the password key for UISysadmin under global.cms.secrets "}}
+  {{- end }}
+
+  {{- if or (eq (include "opsb.deployReporting" .) "true") (eq (include "opsb.enableAEC" .) "true") }}
+
+  {{- if .Values.global.vertica.embedded }}
+
+  {{- if eq .Values.global.vertica.rwuser "vertica_rwuser" -}}
+  {{- fail "Error: For Embedded Vertica, Please use 'dbadmin' as Read Write User" }}
+  {{- end }}
+
+  {{- if eq .Values.global.vertica.rouser "vertica_rouser" -}}
+  {{- fail "Error: For Embedded Vertica, Please use 'dbadmin' as Read only User" }}
+  {{- end }}
+
+  vertica.host: {{ required "Must provide Vertica host global.vertica.host." .Values.global.vertica.host | quote }}
+  {{- if eq (.Values.global.vertica.port | toString)  (5433 | toString) }}
+  {{- fail "Error: For Embedded Vertica, Port should be 5444" }}
+  {{- end }}
+
+  {{- if ne .Values.global.vertica.host "itom-di-vertica-svc" -}}
+  {{- fail "Error: For Embedded Vertica, Please use 'itom-di-vertica-svc' as Vertica Host" }}
+  {{- end }}
+
+  {{- else }}     {{/* #  external Vertica */}}
+
+  {{- if eq .Values.global.vertica.host "itom-di-vertica-svc" }}
+  {{- fail "Error: You must define Vertica host, port, rwuser and db for external Vertica" }}
+  {{- end }}
+
+  vertica.host: {{ required "Must provide Vertica host global.vertica.host" .Values.global.vertica.host | quote }}
+  vertica.port: {{ required "Must provide Vertica port global.vertica.port" .Values.global.vertica.port | quote }}
+  vertica.db: {{ required "Must provide Vertica DB name global.vertica.db" .Values.global.vertica.db | quote }}
+  vertica.username: {{ required "Must provide Vertica user name global.vertica.rwuser" .Values.global.vertica.rwuser | quote }}
+  vertica.passwordKey: "ITOMDI_DBA_PASSWORD_KEY"  {{/* # this should not be changed. */}}
+  vertica.useSsl: {{ .Values.global.vertica.tlsEnabled | quote }}
+  {{- end }}
+  {{- end }}
+
+{{/*  #2022.05 */}}
+
+
+  {{- include "helm-lib.failOldParam" (dict "oldParam" "tags.reporting" "newParam" "global.services.opticReporting.deploy" "Values" .Values) }}
+  {{- include "helm-lib.failOldParam" (dict "oldParam" "tags.automaticEventCorrelation" "newParam" "global.services.automaticEventCorrelation.deploy" "Values" .Values) }}
+  {{- include "helm-lib.failOldParam" (dict "oldParam" "tags.stakeholderDashboard" "newParam" "global.services.stakeholderDashboard.deploy" "Values" .Values) }}
+  {{- include "helm-lib.failOldParam" (dict "oldParam" "tags.obm" "newParam" "global.services.obm.deploy" "Values" .Values) }}
+  {{- include "helm-lib.failOldParam" (dict "oldParam" "tags.cloudMonitoring" "newParam" "global.services.hyperscaleObservability.deploy" "Values" .Values) }}
+  {{- include "helm-lib.failOldParam" (dict "oldParam" "tags.monitoringControlCenter" "newParam" "global.services.agentlessMonitoring.deploy" "Values" .Values) }}
+
+
+  {{- if or (eq (include "opsb.enableHyperscaleObservability" .) "true")  (eq (include "opsb.enableAEC" .) "true") (eq (include "opsb.deployReporting" .) "true") }}
+  {{- if eq (include "opsb.deployOpticDL" .) "false" }}
+  {{- if or (not  ((((.Values.global.services).opticDataLake).externalOpticDataLake).externalAccessHost)) (not ((((.Values.global.services).opticDataLake).externalOpticDataLake).externalAccessPort)) -}}
+  {{- fail "Error: Please provide the values of External Access Host and External Access Port required for Shared Optic Data Lake in global.services.opticDataLake.externalOpticDataLake section of values file" }}
+  {{- end }}
+  {{- end }}
+  {{- end }}
+
+  {{- if or (eq (include "opsb.enableHyperscaleObservability" .) "true")  (eq (include "opsb.enableAEC" .) "true") (eq (include "opsb.deployReporting" .) "true") }}
+  {{- if eq (include "opsb.deployOpticDL" .) "false" }}
+  {{- if (not  ((((.Values.global.services).opticDataLake).externalOpticDataLake).integrationUser)) -}}
+  {{- fail "Error: Please provide the value of Integration User required for Shared Optic Data Lake in global.services.opticDataLake.externalOpticDataLake section of values file" }}
+  {{- end }}
+  {{- end }}
+  {{- end }}
+
+  {{/* # Checks for any capability set to false instead of commenting */}}
+
+  {{- include "helm-lib.mustBeNullOrTrue" (dict "param" "global.services.automaticEventCorrelation.deploy" "Values" .Values) }}
+
+  {{- include "helm-lib.mustBeNullOrTrue" (dict "param" "global.services.stakeholderDashboard.deploy" "Values" .Values) }}
+
+  {{- include "helm-lib.mustBeNullOrTrue" (dict "param" "global.services.obm.deploy" "Values" .Values) }}
+
+  {{- include "helm-lib.mustBeNullOrTrue" (dict "param" "global.services.hyperscaleObservability.deploy" "Values" .Values) }}
+
+  {{- include "helm-lib.mustBeNullOrTrue" (dict "param" "global.services.agentlessMonitoring.deploy" "Values" .Values) }}
+
+  {{- include "helm-lib.mustBeNullOrTrue" (dict "param" "global.services.anomalyDetection.deploy" "Values" .Values) }}
+
+  {{- include "helm-lib.mustBeNullOrTrue" (dict "param" "global.services.opticReporting.deploy" "Values" .Values) }}
+
+  {{- if eq (include "opsb.deployOpticDL" .) "false" }}
+  {{- if (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingNamespace).namespace) }}
+  {{- if or (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingExternalAccessHost).diReceiverPort) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingExternalAccessHost).diAdminPort) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingExternalAccessHost).diDataAccessPort) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingExternalAccessHost).diPulsarSslPort) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingExternalAccessHost).diPulsarWebPort) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).diReceiverHost) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).diReceiverPort) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).diAdminHost) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).diAdminPort) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).diDataAccessHost) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).diDataAccessPort) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).diPulsarHost) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).diPulsarSslPort) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).diPulsarWebPort) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).ingressControllerHost) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).ingressControllerPort) }}
+  {{- fail "Error: Please use any one of the 3 connection mechanisms for External Optic Data Lake" }}
+  {{- end }}
+  {{- end }}
+  {{- end }}
+
+  {{- if eq (include "opsb.deployOpticDL" .) "false" }}
+  {{- if or (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).diReceiverHost) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).diReceiverPort) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).diAdminHost) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).diAdminPort) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).diDataAccessHost) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).diDataAccessPort) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).diPulsarHost) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).diPulsarSslPort) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).diPulsarWebPort) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).ingressControllerHost) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).ingressControllerPort)  }}
+  {{- if or (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingNamespace).namespace) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingExternalAccessHost).diReceiverPort) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingExternalAccessHost).diAdminPort) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingExternalAccessHost).diDataAccessPort) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingExternalAccessHost).diPulsarSslPort) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingExternalAccessHost).diPulsarWebPort) }}
+  {{- fail "Error: Please use any one of the 3 connection mechanisms for External Optic Data Lake" }}
+  {{- end }}
+  {{- end }}
+  {{- end }}
+
+{{/*
+#  {{- if eq (include "opsb.deployOpticDL" .) "false" }}
+#  {{- if or (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingInternalAccessHost).internalAccessHost) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingInternalAccessHost).internalAccessPort) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingInternalAccessHost).diReceiverPort) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingInternalAccessHost).diAdminPort) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingInternalAccessHost).diDataAccessPort) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingInternalAccessHost).diPulsarSslPort) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingInternalAccessHost).diPulsarWebPort) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingInternalAccessHost).ingressControllerPort) }}
+#  {{- if or (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingNamespace).namespace) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingExternalAccessHost).diReceiverPort) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingExternalAccessHost).diAdminPort) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingExternalAccessHost).diDataAccessPort) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingExternalAccessHost).diPulsarSslPort) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingExternalAccessHost).diPulsarWebPort) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).diReceiverHost) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).diReceiverPort) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).diAdminHost) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).diAdminPort) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).diDataAccessHost) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).diDataAccessPort) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).diPulsarHost) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).diPulsarSslPort) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).diPulsarWebPort) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).ingressControllerHost) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).ingressControllerPort) }}
+#  {{- fail "Error: Please use any one of the 4 connection mechanisms for External Optic Data Lake" }}
+# It is difficult to check for the different conditions and then concatenate the ARGS_ENDPOINTS at the end in yaml.
+#  {{- end }}
+#  {{- end }}
+#  {{- end }}
+*/}}
+
+  {{- if eq (include "opsb.deployOpticDL" .) "false" }}
+  {{- if or (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingExternalAccessHost).diReceiverPort) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingExternalAccessHost).diAdminPort) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingExternalAccessHost).diDataAccessPort) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingExternalAccessHost).diPulsarSslPort) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingExternalAccessHost).diPulsarWebPort) }}
+  {{- if or (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingNamespace).namespace) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).diReceiverHost) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).diReceiverPort) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).diAdminHost) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).diAdminPort) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).diDataAccessHost) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).diDataAccessPort) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).diPulsarHost) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).diPulsarSslPort) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).diPulsarWebPort) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).ingressControllerHost) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).ingressControllerPort) }}
+  {{- fail "Error: Please use any one of the 3 connection mechanisms for External Optic Data Lake" }}
+  {{- end }}
+  {{- end }}
+  {{- end }}
+
+{{/*
+#  {{- if and (ne (include "opsb.deployOpticDL" .) "false") (ne (include "opsb.deployOpticDL" .) "true") }}
+#  {{- if or ((((.Values.global.services).opticDataLake).externalOpticDataLake).externalAccessHost) ((((.Values.global.services).opticDataLake).externalOpticDataLake).externalAccessPort) ((((.Values.global.services).opticDataLake).externalOpticDataLake).integrationUser) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingNamespace).namespace) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingExternalAccessHost).diReceiverPort) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingExternalAccessHost).diAdminPort) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingExternalAccessHost).diDataAccessPort) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingExternalAccessHost).diPulsarSslPort) (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingExternalAccessHost).diPulsarWebPort) }}
+#  {{- fail "Error: Please provide the values in global.services.opticDataLake.externalOpticDataLake section of values file only when using External Optic Data Lake" }}
+#  {{- end }}
+#  {{- end }}
+*/}}
+
+  {{- if (eq (include "opsb.deployOpticDL" .) "false") }}
+  {{- if and (not (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingNamespace).namespace)) (not (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingExternalAccessHost).diReceiverPort)) (not (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingExternalAccessHost).diAdminPort)) (not (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingExternalAccessHost).diDataAccessPort)) (not (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingExternalAccessHost).diPulsarSslPort)) (not (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingExternalAccessHost).diPulsarWebPort)) (not (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).diReceiverHost)) (not (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).diReceiverPort)) (not (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).diAdminHost)) (not (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).diAdminPort)) (not (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).diDataAccessHost)) (not (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).diDataAccessPort)) (not (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).diPulsarHost)) (not (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).diPulsarSslPort)) (not (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).diPulsarWebPort)) (not (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).ingressControllerHost)) (not (((((.Values.global.services).opticDataLake).externalOpticDataLake).connectUsingServiceFQDN).ingressControllerPort)) }}
+  {{- fail "Error: Please provide the values in global.services.opticDataLake.externalOpticDataLake section of values file when using External Optic Data Lake" }}
+  {{- end }}
+  {{- end }}
+
+  {{- if (eq (include "opsb.deployOpticDL" .) "false") }}
+  {{- if .Values.global.vertica.embedded }}
+  {{- fail "Error: Embedded Vertica is not supported when using External Optic Data Lake. Please use External Vertica"}}
+  {{- end -}}
+  {{- end -}}
+
+  {{- if eq (include "opsb.deployOpticDLMessageBus" .) "false" -}}
+  {{- if not ((((((.Values.global.services).opticDataLake).pulsar).externalPulsar).connectUsingNamespace).namespace) -}}
+  {{- fail "Error: Please provide the values in global.services.opticDataLake.pulsar.externalPulsar.connectUsingNamespace.namespace section of values file when using Shared Optic Data Lake Message Bus" -}}
+  {{- end -}}
+  {{- end -}}
+
+  {{- if and (eq .Values.global.idm.orgAware true)  (not ((.Values.secrets).idm_opsbridge_saas_admin_password)) -}}
+  {{- fail "Error: Please provide the value for idm_opsbridge_saas_admin_password when setting global.idm.orgAware to true" }}
+  {{- end -}}

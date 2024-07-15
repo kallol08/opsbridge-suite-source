@@ -1,0 +1,420 @@
+{{- $namePrefix := include "namePrefix" . -}}
+{{- $defaultResourceConfig := include "ucmdb.defaultResourceConfig" . | fromYaml -}}
+{{- $replicaCount := coalesce .Values.deployment.replicaCount $defaultResourceConfig.replicaCount -}}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ printf "%s-ucmdb" ($namePrefix) }}
+  labels:
+    name: {{ .Chart.Name }}
+    {{- include "ucmdb.labels" . | nindent 4 }}
+  annotations:
+    {{- include "ucmdb.deployment.annotations" (dict "replicaCount" $replicaCount "Values" .Values) | nindent 4 }}
+spec:
+  serviceName: {{ printf "%s-ucmdb-svc" ($namePrefix) }}
+  replicas: {{ $replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "ucmdb.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        name: {{ .Chart.Name }}
+        workLoad: {{ .Values.workLoad }}
+        workType: ucmdbreader
+        {{- include "ucmdb.labels" . | nindent 8 }}
+      annotations:
+        {{- include "ucmdb.pod.annotations" . | nindent 8 }}
+    spec:
+      {{- with (coalesce .Values.nodeSelector .Values.global.nodeSelector) }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.global.docker.imagePullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.global.docker.imagePullSecret }}
+      {{- end }}
+      serviceAccount: {{ template "ucmdb.serviceAccountName" . }}
+      serviceAccountName: {{ template "ucmdb.serviceAccountName" . }}
+      {{- include "ucmdb.affinity.inject" . | nindent 6 }}
+      topologySpreadConstraints:
+        - labelSelector:
+            matchLabels:
+              app: {{ include "ucmdb.name" . }}
+          maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+      initContainers:
+      {{- include "helm-lib.waitForVault" . | nindent 6  }}
+      {{- include "helm-lib.containers.vaultInit" (dict "commonName" (printf "%s-ucmdb-svc" ($namePrefix)) "additionalSANs" (printf "%s-ucmdb-writersvc" ($namePrefix)) "Values" .Values) | nindent 6 }}
+      {{- $dbHost := include "helm-lib.dbHost" . }}
+      {{- $dbPort := include "helm-lib.dbPort" . }}
+      {{- $externalDb := not .Values.global.database.internal }}
+      {{- if not $externalDb }}
+      {{- include "helm-lib.waitFor" (dict "service" $dbHost "port" $dbPort "Values" .Values) | nindent 6 }}
+      {{- end }}
+      {{- if .Values.global.kafka.enabled }}
+        {{- if .Values.global.sharedComponentDetails.kafka.serviceName | default .Values.global.kafka.kafkaHost}}
+          {{- include "helm-lib.waitFor" (dict "service" (.Values.global.sharedComponentDetails.kafka.serviceName | default .Values.global.kafka.kafkaHost) "port" (.Values.global.sharedComponentDetails.kafka.port | default .Values.global.kafka.kafkaPort) "Values" .Values "addSecurityContext" false) | nindent 6 }}
+        {{- end }}
+      {{- end}}
+      containers:
+      {{- include "helm-lib.containers.vaultRenew" (dict "containerName" "kubernetes-vault-renew" "Values" .Values) | nindent 6 }}
+      - name: {{ printf "%s-ucmdb" ($namePrefix) }}
+        image: {{ .Values.global.docker.registry}}/{{ include "ucmdb.docker.orgName" . }}/{{ .Values.server.image }}:{{ .Values.server.imageTag }}
+        imagePullPolicy: {{ .Values.global.docker.imagePullPolicy }}
+        resources:
+          {{- coalesce .Values.resources $defaultResourceConfig.resources | toYaml | nindent 10 }}
+        securityContext:
+          {{- include "ucmdb.container.securityContext" . | nindent 10 }}
+        livenessProbe:
+          httpGet:
+            path: /live/
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 1800
+          timeoutSeconds: 10
+          successThreshold: 1
+          failureThreshold: 6
+          periodSeconds: 30
+        readinessProbe:
+          exec:
+            command:
+            - /ucmdb/bin/healthz.sh
+            - http://localhost:8080/health-check/
+          initialDelaySeconds: 120
+          timeoutSeconds: 10
+          successThreshold: 1
+          failureThreshold: 2
+          periodSeconds: 30
+        env:
+          {{- include "ucmdb.env" . | nindent 10 }}
+          - name: ADMIN_PASSWORD_VAULT_KEY
+            value: {{ .Values.global.cms.secrets.admin | quote }}
+          - name: SYSADMIN_PASSWORD_VAULT_KEY
+            value: {{ .Values.global.cms.secrets.sysadmin | quote }}
+          - name: UISYSADMIN_PASSWORD_VAULT_KEY
+            value: {{ .Values.global.cms.secrets.UISysadmin | quote }}
+          - name: suite
+            value: "true"
+          - name: IS_SAAS_ENV
+            value: {{ .Values.global.isSaaS | quote }}
+          - name: ENABLE_FIPS
+            value: {{ .Values.global.enableFIPS | quote }}
+          - name: UCMDB_VAULT_KEY_FOR_MASTER_KEY
+            value: {{ .Values.deployment.secrets.masterKey | quote }}
+          - name: UCMDB_VAULT_KEY_FOR_FIRST_KEY
+            value: {{ .Values.deployment.secrets.firstKey | quote }}
+          {{- $dbType := include "helm-lib.dbType" . }}
+          {{- $ifCreateDB := include "helm-lib.dbCreateDb" . }}
+          {{- $isPg := eq "postgresql" (lower $dbType) }}
+          {{- $isOracle := eq "oracle" (lower $dbType) }}
+          {{- $sslEnabled := eq "true" (include "helm-lib.dbTlsEnabled" . | lower ) }}
+          - name: IS_EXTERNAL_DB
+            value: {{ $externalDb | quote }}
+          - name: CREATE_DB
+            value: {{ $ifCreateDB | quote }}
+          - name: DB_HOST
+            value: {{ $dbHost | quote }}
+          - name: DB_PORT
+            value: {{ $dbPort | quote }}
+          - name: DB_NAME
+            value: {{ include "helm-lib.dbName" . | quote }}
+          - name: DB_ADMIN
+            value: {{ include "helm-lib.dbAdmin" . | quote }}
+          - name: DB_ADMIN_PASSWORD_VAULT_KEY
+            value: {{ include "helm-lib.dbAdminKey" . | quote }}
+          {{- if $externalDb }}
+          - name: DB_SCHEMA
+            value: {{ include "helm-lib.dbUser" . | quote }}
+          - name: DB_SCHEMA_PASSWORD_VAULT_KEY
+            value: {{ include "helm-lib.dbUserKey" . | quote }}
+          {{- else }}
+          - name: DB_USER
+            value: {{ include "helm-lib.dbUser" . | quote }}
+          - name: DB_PASSWORD_VAULT_KEY
+            value: {{ include "helm-lib.dbUserKey" . | quote }}
+          - name: DB_SCHEMA
+            value: "ucmdb"
+          {{- end }}
+          - name: DB_TYPE
+            value: {{ $dbType | quote }}
+          {{- if $isPg }}
+          - name: DB_PSQL_SCHEMA
+            value: {{ coalesce (include "ucmdbserver.injectGlobalVar" (dict "var" "database.schema" "Release" .Release "Template" .Template "Values" .Values )) (include "helm-lib.dbUser" .) | quote }}
+          {{- end }}
+          {{- if $isOracle }}
+          - name: DB_SID
+            value: {{ include "helm-lib.dbOracleSid" . | quote }}
+          - name: DB_SERVICENAME
+            value: {{ include "helm-lib.dbOracleServiceName" . | quote }}
+          - name: ORACLE_CONNECTION_STRING
+            value: {{ include "helm-lib.dbOracleConnectionString" . | quote }}
+          - name: DB_ORA_SSL_ROOT_CERT
+            value: /opt/certs/
+          {{- if eq "true" (lower $ifCreateDB) }}
+          - name: DB_DEFTABLESPACE
+            value: {{ coalesce .Values.deployment.database.oracleDefaultTablespace .Values.global.database.oracleDefaultTablespace "n/a" | quote }}
+          - name: DB_TEMPTABLEPACE
+            value: {{ coalesce .Values.deployment.database.oracleTemporaryTablespace .Values.global.database.oracleTemporaryTablespace "n/a" | quote }}
+          {{- end }}
+          {{- if $sslEnabled }}
+          - name: DB_ORA_SSL
+            value: {{ $sslEnabled | quote }}
+          {{- end }}
+          {{- end }}
+          {{- if and .Values.global.enableFIPS (not $sslEnabled) }}
+          {{- cat "\n\nERROR: Database ssl connection must be enabled in fips mode" | fail -}}
+          {{- end }}
+          {{- if $sslEnabled }}
+          {{- if $isPg }}
+          - name: DB_PSQL_SSL
+            value: {{ $sslEnabled | quote }}
+          - name: DB_PSQL_SSL_MODE
+            value: {{ include "ucmdbserver.injectGlobalVar" (dict "var" "database.pgTlsMode" "Release" .Release "Template" .Template "Values" .Values ) | quote }}
+          - name: DB_PSQL_SSL_ROOT_CERT
+            value: /opt/certs/
+          - name: SSL_IS_FULL_VALIDATION
+            value: {{ .Values.deployment.database.pgSSLFullValidation | quote }}
+          {{- if .Values.deployment.database.pgSSLFullValidation }}
+          - name: SSL_CERT_CRL
+            value: {{ required "Required value is not defined: sslCRL" .Values.deployment.database.sslCRL | quote }}
+          {{- end }}
+          {{- end }}
+          {{- end }}
+          - name: INSTANCE_SIZE
+            value: {{ coalesce .Values.deployment.instanceSize $defaultResourceConfig.instanceSize | quote }}
+          - name: MIN_MEMORY
+            value: {{ coalesce .Values.deployment.jvmXmsMemory $defaultResourceConfig.jvmXmsMemory | quote }}
+          - name: MAX_MEMORY
+            value: {{ coalesce .Values.deployment.jvmXmxMemory $defaultResourceConfig.jvmXmxMemory | quote }}
+          {{- $solrUrl := tpl .Values.deployment.solrUrl . -}}
+          {{- if $solrUrl }}
+          - name: CMDB_SEARCH_SOLR_STANDALONE
+            value: "true"
+          - name: CMDB_SEARCH_SOLR_STANDALONE_URL
+            value: {{ $solrUrl | quote }}
+          {{- end }}
+          - name: TZ
+            value: {{ .Values.global.cms.timeZone | quote }}
+          - name: UPGRADE_CP
+            value: {{ .Values.deployment.upgradeCp | quote }}
+          - name: MTENANT
+            value: {{ .Values.deployment.multiTenant | quote }}
+          - name: ENABLE_ECC
+            value: {{ .Values.global.cms.enableEcc | quote }}
+          - name: JETTY_CONNECTIONS_HTTP_PROBE_BASICAUTHENTICATION_ENABLED
+            value: {{ not .Values.global.mTLS | quote }}
+          - name: PROBE_TOKENAUTHENTICATION_AUTO_ENABLE
+            value: {{ .Values.global.autoEnableProbeTBA | quote }}
+          - name: PROBE_INTERNAL_TOKEN_REFRESH
+            value: {{ .Values.global.enableInternalTokenRefresh | quote }}
+          - name: MUTUAL_TLS
+            value: {{ .Values.global.mTLS | quote }}
+          - name: ENABLE_HA_LOG_OUTPUT_CHANGE
+            value: {{ .Values.deployment.enableHaLogOutputChange | quote }}
+          - name: CACERTS_SSL_CERTIFICATE
+            value: "/run/secrets/boostport.com:/run/secrets/boostport.com/trustedCAs:/ucmdb/certificate:/opt/certs"
+          - name: UCMDB_SSL_CERTIFICATE_AUTHORITIES
+            value: "/run/secrets/boostport.com:/run/secrets/boostport.com/trustedCAs:/opt/certs"
+          {{- if .Values.deployment.idmEnabled }}
+          - name: IDM_LOCAL_CLIENT_ENABLED
+            value: "true"
+          - name: IS_IDM_INTERNAL
+            value: {{ .Values.global.idm.internal | quote }}
+          - name: IDM_SERVICE_URI
+            value: {{ tpl .Values.global.idm.idmAuthUrl . | quote }}
+          - name: IDM_SERVICE_URI_INTERNAL
+            value: {{ tpl .Values.global.idm.idmServiceUrl . | quote }}
+          - name: IDM_INTEGRATION_ACCOUNT_USER_NAME
+            value: {{ .Values.global.idm.idmTransportUser | quote }}
+          - name: IDM_INTEGRATION_ACCOUNT_PASSWORD_SECRET_KEY
+            value: {{ .Values.global.idm.idmTransportPasswordKey | quote }}
+          - name: IDM_INTEGRATION_ADMIN_USER_NAME
+            value: {{ .Values.global.idm.idmIntegrationAdmin | quote }}
+          - name: IDM_INTEGRATION_ADMIN_PASSWORD_SECRET_KEY
+            value: {{ .Values.global.idm.idmIntegrationAdminPasswordKey | quote }}
+          - name: IDM_REST_LOGIN_TENANT_NAME
+            value: {{ .Values.global.idm.tenant | quote }}
+          - name: IDM_AUDIT_ENGINE_HOST_NAME
+            value: {{ .Values.global.idm.auditEngineHostname | quote }}
+          - name: IDM_AUDIT_ENGINE_PORT
+            value: {{ .Values.global.idm.auditEnginePort | quote }}
+          - name: IDM_AUDIT_INTEGRATION_USER_NAME
+            value: {{ .Values.global.idm.auditIntegrationUser | quote }}
+          - name: IDM_AUDIT_INTEGRATION_PASSWORD_SECRET_KEY
+            value: {{ .Values.global.idm.auditIntegrationUserPasswordKey | quote }}
+          - name: IDM_ORG_AWARENESS_AUTHORIZATION_ENABLED
+            value : {{ .Values.global.idm.orgAware | quote }}
+          {{- end }}
+          {{- if .Values.deployment.log.size }}
+          - name: LOG_MAX_SIZE
+            value: {{ .Values.deployment.log.size | quote }}
+          {{- end }}
+          {{- if .Values.deployment.log.rotate }}
+          - name: LOG_BACKUP_COUNT
+            value: {{ .Values.deployment.log.rotate | quote }}
+          {{- end }}
+          {{- if .Values.deployment.aplmsDomainName }}
+          - name: APLMS_DOMAIN_NAME
+            value: {{ .Values.deployment.aplmsDomainName | quote }}
+          {{- end }}
+          - name: MAX_JVM_HPROF
+            value: {{ .Values.global.cms.jvmMaxHprof | quote }}
+          - name: JAVA_OPTS
+            value: {{ .Values.deployment.additionalOpts }} -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=../ucmdb/runtime/log/java_heapdump.hprof -XX:OnOutOfMemoryError=../ucmdb/bin/javaOutOfMemory.sh {{ if .Values.global.cms.debug }} -XX:+PrintGCTimeStamps -XX:+PrintGCDateStamps -Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=5005 -Dcom.sun.management.jmxremote.port=29601 -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Djava.rmi.server.hostname={{ .Values.global.externalAccessHost }} -Dcom.sun.management.jmxremote.rmi.port=29601{{ end }}{{ if .Values.deployment.lwssoEnabled }} -DobmDeployment{{ end }}
+          {{- if .Values.global.cms.deployGateway }}
+          - name: ENABLE_SMAX_INTEGRATION
+            value: "true"
+          {{- end }}
+          {{- if not .Values.deployment.defaultUserPasswordPolicyEnabled }}
+          - name: SECURITY_USER_PASSWORD_USE_DEFAULT_POLICY
+            value: {{ .Values.deployment.defaultUserPasswordPolicyEnabled | quote }}
+          {{- end }}
+          {{- if .Values.deployment.mamGuiDefaultBundles }}
+          - name: MAM_GUI_BUNDLES_DEFAULT_BUNDLES_NAMES
+            value: {{ .Values.deployment.mamGuiDefaultBundles | quote }}
+          {{- end }}
+          {{- if .Values.deployment.embeddedMode }}
+          - name: EMBEDDED_UCMDB
+            value: {{ .Values.deployment.embeddedMode | quote }}
+          {{- end }}
+          {{- if .Values.global.cms.integrationUsername }}
+          - name: INTEGRATION_USERNAME
+            value: {{ .Values.global.cms.integrationUsername | quote }}
+          - name: INTEGRATION_PASSWORD_VAULT_KEY
+            value: {{ .Values.global.cms.secrets.integration | quote }}
+          {{- end }}
+          {{- if .Values.deployment.lwssoEnabled }}
+          - name: "LWSSO_ENABLE"
+            value: "true"
+          - name: "MAM_SERVER_SSO_IS_ENABLED"
+            value: "true"
+          - name: "MAM_SERVER_SSO_DOMAIN"
+            {{- if (contains "." .Values.global.externalAccessHost) }}
+            {{- $splittedDomains := (splitn "." 2 .Values.global.externalAccessHost) }}
+            value: {{ default $splittedDomains._1 .Values.deployment.lwssoDomain }}
+            {{- else }}
+            value: {{ default "" .Values.deployment.lwssoDomain }}
+            {{- end }}
+          - name: "MAM_SERVER_SSO_MAC_ALGORITHM_NAME"
+            value: {{ default "SHA256" .Values.deployment.lwssoMacAlgorithmName }}
+          - name: "MAM_SERVER_SSO_PBE_DIGEST_ALGORITHM"
+            value: {{ default "SHA256" .Values.deployment.lwssoPbeDigestAlgorithm }}
+          {{- else }}
+          - name: "LWSSO_ENABLE"
+            value: "false"
+          - name: "MAM_SERVER_SSO_IS_ENABLED"
+            value: "false"
+          {{- end }}
+          - name: "LWSSO_INIT_VAULT_KEY"
+            value: {{ default "HPSSO_INIT_STRING_KEY" .Values.global.idm.hpssoInitStrSecretName }}
+          {{- if .Values.deployment.secretStorage }}
+          - name: SECRET_STORAGE
+            value: {{ .Values.deployment.secretStorage | quote }}
+          {{- end }}
+          {{- if and (eq .Values.deployment.secretStorage "k8s") (.Values.deployment.secretStorageName) }}
+          - name: SECRET_STORAGE_NAME
+            value: {{ .Values.deployment.secretStorageName | quote}}
+          {{- end }}
+          {{- if .Values.global.kafka.enabled }}
+          - name: KAFKA_HOST
+            value: {{ .Values.global.kafka.kafkaHost | quote}}
+          - name: KAFKA_PORT
+            value: {{ .Values.global.kafka.kafkaPort | quote}}
+          - name: KEYSTORE_PASS
+            value: {{ .Values.global.kafka.keystorePass | quote}}
+          - name: ITOM_CMDB_SSL_CERTIFICATE
+            value: {{ .Values.global.kafka.kafkaCertificate | quote}}
+          - name: ITOM_CMDB_SSL_CERTIFICATE_PK
+            value: {{ .Values.global.kafka.kafkaPrivateKey | quote}}
+          - name: SSL_UCMDB_KAFKA_KEYSTORE
+            value: {{ .Values.global.kafka.sslUcmdbKafkaKeyStore | quote}}
+          - name: SSL_UCMDB_KAFKA_TRUSTSTORE
+            value: {{ .Values.global.kafka.sslUcmdbKafkaTrustStore | quote}}
+          - name: RETRIES
+            value: {{ .Values.global.kafka.retries | quote}}
+          - name: RETRY_BACKOFF_MS
+            value: {{ .Values.global.kafka.retryBackOffMs | quote}}
+          - name: ENABLE_NOTIFICATIONS
+            value: {{ .Values.global.kafka.enableNotifications | quote}}
+          - name: ENABLE_SUBSCRIPTION
+            value: {{ .Values.global.kafka.enableSubscription | quote}}
+          - name: KAFKA_INTEGRATION
+            value: {{ .Values.global.kafka.enabled | quote }}
+          {{- end }}
+          - name: ENABLE_NESTED_CLASS
+            value: {{ .Values.deployment.nestedClassEnabled | quote }}
+          - name: ENABLE_JAVA_NMT
+            value: {{ .Values.deployment.javaNMTEnabled | quote }}
+          - name: ENABLE_JEMALLOC
+            value: {{ .Values.deployment.jemallocEnabled | quote }}
+          - name: ENABLE_JEMALLOC_LEAKCHECK
+            value: {{ .Values.deployment.jemallocLeakProfEnabled | quote }}
+        ports:
+        - containerPort: 8443
+        - containerPort: 8444
+        - containerPort: 7600
+        {{- if .Values.global.cms.debug }}
+        - containerPort: 5005
+        - containerPort: 29601
+        {{- end }}
+        volumeMounts:
+        - name: log-vol
+          mountPath: /var/nfs/audit
+          subPath: ucmdb/audit
+        - name: log-vol
+          mountPath: /ucmdb/runtime/log/
+          subPath: ucmdb/server/
+        - name: data-vol
+          mountPath: /ucmdb/license/
+          subPath: ucmdb/server/license/
+        - name: data-vol
+          mountPath: /ucmdb/customer-splash/
+          subPath: ucmdb/server/customer-splash/
+        - name: data-vol
+          mountPath: /ucmdb/runtime/model-export/
+          subPath: ucmdb/server/runtime/model-export/
+        - name: data-vol
+          mountPath: /ucmdb/conf/discovery/customer_1/
+          subPath: ucmdb/server/conf/discovery/customer_1/
+        - name: data-vol
+          mountPath: /ucmdb/content/content_packs/
+          subPath: ucmdb/server/content/content_packs/
+        - name: data-vol
+          mountPath: /ucmdb/old/search/configuration/
+          subPath: ucmdb/server/search/configuration/
+        - name: vault-token
+          mountPath: /var/run/secrets/boostport.com
+        - name: jvm-ext
+          mountPath: /usr/lib/jvm/zulu-8-amd64/jre/lib/ext
+        - name: jvm-security
+          mountPath: /usr/lib/jvm/zulu-8-amd64/jre/lib/security
+        {{- if or $sslEnabled (not .Values.global.idm.internal) }}
+        - name: cert-dir
+          mountPath: /opt/certs
+        {{- end }}
+        lifecycle:
+          preStop:
+            exec:
+              command: ["/ucmdb/bin/rollingUpgrade.sh"]
+      securityContext:
+        {{- include "ucmdb.pod.securityContext" . | nindent 8 }}
+      volumes:
+      - name: data-vol
+        {{- include "helm-lib.pvcStorage" (dict "claim" "dataVolumeClaim" "Release" .Release "Template" .Template "Values" .Values ) | nindent 8 }}
+      - name: log-vol
+        {{- include "helm-lib.pvcStorage" (dict "claim" "logVolumeClaim" "Release" .Release "Template" .Template "Values" .Values ) | nindent 8 }}
+      - name: vault-token
+        emptyDir: {}
+      - name: jvm-ext
+        emptyDir: {}
+      - name: jvm-security
+        emptyDir: {}
+      {{- if or $sslEnabled (not .Values.global.idm.internal) }}
+      - name: cert-dir
+        configMap:
+          name: {{ .Values.global.database.tlsTruststore }}
+      {{- end }}
+

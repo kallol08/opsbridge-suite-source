@@ -1,0 +1,40 @@
+{{/*# Copyright 2023 Open Text.*/}}
+
+{{/*# The only warranties for products and services of Open Text and its affiliates*/}}
+{{/*# and licensors ("Open Text") are as may be set forth in the express warranty*/}}
+{{/*# statements accompanying such products and services. Nothing herein should be*/}}
+{{/*# construed as constituting an additional warranty. Open Text shall not be*/}}
+{{/*# liable for technical or editorial errors or omissions contained herein. The*/}}
+{{/*# information contained herein is subject to change without notice.*/}}
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: itom-opsbridge-des-nodeport
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: itom-opsbridge-data-enrichment-service-app
+    service: itom-opsbridge-des-nodeport
+    app.kubernetes.io/name: itom-opsbridge-des-nodeport
+    app.kubernetes.io/managed-by: {{.Release.Name}}
+    app.kubernetes.io/version: {{ .Values.des.imageTag }}
+    itom.microfocus.com/capability: HyperscaleObservability
+    tier.itom.microfocus.com/backend: backend
+    itom.microfocus.com/description: Downtime_Enrichment_Service
+  annotations:
+    {{- include "helm-lib.service.internalLBAnnotations" . | nindent 4 }}
+spec:
+  ipFamilyPolicy: PreferDualStack
+  ports:
+  - name: des-http
+    port: 6060
+    targetPort: 40009
+    protocol: TCP
+    {{- if or (eq .Values.global.cluster.k8sProvider "cdf") (eq .Values.global.cluster.k8sProvider "openshift") }}
+    nodePort: {{ .Values.des.receiverNodePort }}
+    {{- end }}
+  selector:
+    app: itom-opsbridge-data-enrichment-service-app
+  sessionAffinity: None
+  type: {{ include "helm-lib.service.getServiceType" . }}
+  loadBalancerIP:  {{ include "helm-lib.service.getLoadBalancerIP" . }}

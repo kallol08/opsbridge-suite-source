@@ -1,0 +1,11 @@
+{{if .Values.itomdipulsar.proxy.config.useExternalCASignedCerts}}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: opsb-messagebus-external-ca-cert
+  namespace: {{ .Release.Namespace }}
+data:
+  tls.key: {{ include "messagebus-external-ca.tlsKeyResolve" . }}
+  tls.crt: {{ include "messagebus-external-ca.tlsCertResolve" . }}
+
+{{- end }}

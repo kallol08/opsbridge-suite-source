@@ -1,0 +1,201 @@
+#############################################
+# Configuration file for Boost config chart #
+#############################################
+global:
+  boost:
+    environment: # default CDF
+    extension: # default hcm
+
+    tls:
+      cert: # default /run/secrets/boostport.com/server.crt
+      key: # default /run/secrets/boostport.com/server.key
+      ca: # default /run/secrets/boostport.com/issue_ca.crt:/run/secrets/boostport.com/ca.crt:/etc/hcm/cacerts
+      keystorePass: # default changeit
+      keystorePassVaultKey: # default TLS_PASSPHRASE
+      keystorePassAppRole: # default: core
+      truststorePassVaultKey: # default TLS_PASSPHRASE
+      truststorePassAppRole: # default: core
+
+    datasource:
+      type: # default postgres
+      host: # default default-postgresql-svc
+      namespace: # default core
+      port: # default 5432
+      name: # default cgro_cgro
+      serviceName: # default ""
+      username: # default cgrodbuser
+      password: # default Cloud123?
+      passwordVaultKey: # default BOOST_DATASOURCE_PASSWORD
+      passwordAppRole: # default: core
+      enableReconnect: # default true
+      postgresValidationQuery: # default SELECT 1
+      mssqlValidationQuery: # default SELECT 1
+      oracleValidationQuery: # default SELECT 1 FROM DUAL
+      jpaShowSql: # default false
+      oracleDriverPath: # default /var/vols/driver
+
+    kafka:
+      host: # default broker-0.kafka-headless-svc
+      port: # default 9092
+    rabbitmq:
+      host: # default itom-xruntime-rabbitmq-svc
+      port: # default 5672
+      uiport: # default 15671
+      username: # default maasuser
+      virtualhost: # default itom.hcmx.ia
+      ssl:
+        algorithm: # default TLSv1.2
+        enabled: # default false
+      rabbitmqPasswordVaultKey: # default rabbit_pass_secret_key
+      passwordAppRole: # default itom-xruntime-infra
+
+    java:
+      xms: # default 300m
+      xmx: # default 300m
+
+    encrypt:
+      jasyptPasswordVaultKey: # default JASYPT_PASSWORD_VAULT_KEY
+      passwordVaultKey: # default ENCRYPT_PASSWORD_VAULT_KEY
+      passwordAppRole: # default global.vaultAppRole
+
+    hystrix:
+      defaultInternalTimeoutMs: # default 60000
+      defaultThreadPoolSize: # default 4
+      interruptThreadOnTimeout: # default true
+      interruptThreadOnCancel: # default true
+      defaultMaximumSize: # default 32
+      defaultMaxQueueSize: # default 10
+      queueSizeRejectionThreshold: # default 20
+      allowMaximumSizeToDivergeFromCoreSize: # default true
+
+    logging:
+      level: # default INFO
+      appLevel: # default INFO
+      pathAppendHostname: # default true
+
+    client:
+      internalConnectTimeoutMs: # default 20000
+      internalReadTimeoutMs: # default 20000
+      cacheTimeoutSeconds: # default 1800
+      permissionsCacheMaxSize: # default 1000
+      scheduler:
+        host: scheduler-svc
+        port: 9992
+        protocol: https
+        contextPath: /scheduler
+      idm:
+        host: idm-svc
+        namespace: core
+        contextPath: /idm-service
+        port: 443
+        protocol: https
+        idmTransportUser: # default transport_admin
+        idmTransportPasswordVaultKey: # default idm_transport_admin_password
+        idmTransportPasswordAppRole: # default global.vaultAppRole
+        externalHost: # default global.externalAccessHost
+        externalPort: # default global.externalAccessPort
+        externalProtocol: # default https
+      accounts:
+        host: accounts-svc
+        port: 9992
+        protocol: https
+        contextPath: /accounts
+      showback:
+        host: showback-svc
+        port: 9992
+        protocol: https
+        contextPath: /showback
+      costPolicy:
+        host: costpolicy-svc
+        port: 9992
+        protocol: https
+        contextPath: /costpolicy
+      csaCollector:
+        host: csa-collector-svc
+        port: 9992
+        protocol: https
+        contextPath: /csa-collector
+      imageCatalog:
+        host: image-catalog-svc
+        port: 9992
+        protocol: https
+        contextPath: /image-catalog
+      composer:
+        host: composer-svc
+        port: 9992
+        protocol: https
+        contextPath: /composer
+      csa:
+        host: csa-svc
+        port: 34103
+        protocol: https
+        username: # default csatransportUser
+        passwordVaultKey: # default HCM_IDM_PROVIDER_ACCOUNT_CSATRANSPORTUSER_PASSWORD
+        passwordAppRole: # default global.vaultAppRole
+        contextPath: /csa
+      tls:
+        disableHostnameVerification: # default true
+        ignoreTls: # default false
+
+    chaos:
+      probability: # default 0
+      slowdownProbability: # default 0
+      maxSlowdownSeconds: # default 0
+
+    externalProtocol: # default https
+    externalHost: # default global.externalAccessHost`
+    externalPort: # default 443
+
+    auth:
+      appTransportTenant: # default provider
+      appTransportUsername: # default csbTransportUser
+      appTransportPasswordVaultKey: # default CGRO_TRANSPORT_USER_PASSWORD
+      appTransportPasswordAppRole: # default global.vaultAppRole
+      tokenHeaderKey: # default X-Auth-Token
+      tokenExpiryPaddingSeconds: # default 30
+      clientTokenExpiryPaddingSeconds: # default 30
+      tokenCacheReaperPeriodSeconds: # default 300
+      appDefaultTenant: # default Provider
+      appRootTenant: # default Provider
+      externalEntryPoint: # default global.externalAccessHost
+      singleLogoutEnabled: # default: true
+      cgroAdminUser: # default: cgroadmin
+      cgroAdminPasswordVaultKey: # default: cgroadmin_password
+      cgroAdminAppRole: # default global.vaultAppRole
+      tokenCookieKey: # default X-Auth-Token
+      tokenCookiePath: # default /
+      csrfCookieKey: # default XSRF-TOKEN
+      csrfHeaderKey: # default X-XSRF-TOKEN
+      dynamicTenantLoginEnabled: # default: true
+      dynamicTenantLoginQueryParameter: # default: tenant
+      forceLocalLoginEnabled: # default false
+      addTenantIdParameterEnabled: # default false
+
+
+    proxy:
+      host: # optional
+      port: # optional
+      user: # optional
+      password: # optional
+      passwordVaultKey: # default BOOST_PROXY_PASSWORD_VAULT_KEY
+      passwordAppRole: # default global.vaultAppRole
+      fileEnabled: # default false
+      configFile: # default /etc/proxy/proxy.properties
+      configHttpsProxyHostParamName: # default proxy.https_host
+      configHttpsProxyPortParamName: # default proxy.https_port
+      authFile: # default /etc/proxy/proxy_credential.properties
+      authUserParamName: # default proxy.username
+      authPasswordParamName: # default proxy.password
+
+    health:
+      reportingEnabled: # default false
+      eventReporterEnabled: # default false
+      dependencyCheckingEnabled: # default false
+      interval: # default 10000
+      flushInterval: # default 30000
+    event:
+      eventingEnabled: # default true
+      messageBusType: # default kafka
+  kubernetesDomain: {}
+
+  securityContext: {}

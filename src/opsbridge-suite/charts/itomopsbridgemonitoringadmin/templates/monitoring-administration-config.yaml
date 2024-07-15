@@ -1,0 +1,123 @@
+{{/*# Copyright 2023 Open Text.*/}}
+
+{{/*# The only warranties for products and services of Open Text and its affiliates*/}}
+{{/*# and licensors ("Open Text") are as may be set forth in the express warranty*/}}
+{{/*# statements accompanying such products and services. Nothing herein should be*/}}
+{{/*# construed as constituting an additional warranty. Open Text shall not be*/}}
+{{/*# liable for technical or editorial errors or omissions contained herein. The*/}}
+{{/*# information contained herein is subject to change without notice.*/}}
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.itomopsbridgemonitoringadmin.capname }}-cm
+  labels:
+    app.kubernetes.io/name: {{ .Values.itomopsbridgemonitoringadmin.capname }}-cm
+    app.kubernetes.io/managed-by: {{ .Values.itomopsbridgemonitoringadmin.managedby }}
+    app.kubernetes.io/version: {{ .Values.itomopsbridgemonitoringadmin.imageTag }}
+    itom.microfocus.com/capability: HyperscaleObservability
+    tier.itom.microfocus.com/backend: backend
+    tier.itom.microfocus.com/frontend: fronend
+data:
+{{/*  # Begin Used only on edge chart*/}}
+  enableRedisForConfigurationAdmin: {{ coalesce .Values.redis.enabled "true" | quote }}
+  enableSISForConfigurationAdmin: {{ coalesce .Values.sis.enabled "true" | quote }}
+  enableAPMForConfigurationAdmin: {{ coalesce .Values.apm.enabled "true" | quote }}
+{{/*  # End Used only on edge chart*/}}
+  
+  {{- if .Values.global.database.internal }}
+  onestack.dbType: "POSTGRESQL"
+  onestack.dbhost: {{ default  "itom-postgresql" .Values.global.database.internalDatabaseDetails.host | quote }}
+  onestack.dbport: {{ default  "5432" .Values.global.database.internalDatabaseDetails.port | quote }}
+  onestack.dbname: {{ default  "monitoringadmindb" .Values.global.database.internalDatabaseDetails.name | quote }}
+  onestack.dbuser: {{ default  "monitoringadminuser" .Values.global.database.internalDatabaseDetails.user | quote }}
+  onestack.dbschema: {{ default  "monitoringadminschema" .Values.global.database.internalDatabaseDetails.schema | quote }}
+  onestack.dbdialect: "org.hibernate.dialect.PostgreSQLDialect"
+  onestack.dbConnectionString: "" 
+  {{- else }}
+  {{- if eq (include "helm-lib.dbType" . ) "postgresql" }}
+  onestack.dbType: "POSTGRESQL"
+  onestack.dbhost: {{ include "helm-lib.dbHost" . | quote }}
+  onestack.dbport: {{ include "helm-lib.dbPort" . | quote }}
+  onestack.dbname: {{ include "helm-lib.dbName" . | quote }}
+  onestack.dbuser: {{ include "helm-lib.dbUser" . | quote }}
+  onestack.dbschema: {{ coalesce .Values.deployment.database.schema .Values.global.database.schema "monitoringadminschema" | quote }}
+  onestack.dbdialect: "org.hibernate.dialect.PostgreSQLDialect"
+  onestack.dbConnectionString: ""
+  {{- else if eq (include "helm-lib.dbType" . ) "oracle" }}
+  onestack.dbType: "ORACLE" 
+  onestack.dbname: ""
+  onestack.dbhost: ""
+  onestack.dbport: ""
+  onestack.dbschema: {{ coalesce .Values.deployment.database.user .Values.global.database.user | quote }}
+  onestack.dbuser: {{ coalesce .Values.deployment.database.user .Values.global.database.user .Values.global.database.user "monitoringadminuser" | quote }}
+  onestack.dbdialect: "org.hibernate.dialect.OracleDialect"
+  
+  {{- $dbProtocol := "TCP" -}}
+  {{- if or .Values.deployment.database.tlsEnabled .Values.global.database.tlsEnabled }}
+  {{- $dbProtocol = "TCPS" -}}
+  {{- end }}
+
+  {{- $oraConnectionString := (coalesce .Values.deployment.database.oracleConnectionString .Values.global.database.oracleConnectionString) }}
+  {{- $oraServiceName := (coalesce .Values.deployment.database.oracleServiceName .Values.global.database.oracleServiceName) }}
+  {{- $oraServiceSid := (coalesce .Values.deployment.database.oracleSid .Values.global.database.oracleSid) }}
+  {{- if $oraConnectionString }}
+  onestack.dbConnectionString: {{ $oraConnectionString | quote }}
+  {{- else if $oraServiceName }}
+  onestack.dbConnectionString: "(DESCRIPTION=(ADDRESS=(PROTOCOL={{ $dbProtocol }})(HOST={{ include "helm-lib.dbHost" . }})(PORT={{ include "helm-lib.dbPort" . }}))(CONNECT_DATA=(SERVICE_NAME={{ $oraServiceName }})))"
+  {{- else if $oraServiceSid }}
+  onestack.dbConnectionString: "(DESCRIPTION=(ADDRESS=(PROTOCOL={{ $dbProtocol }})(HOST={{ include "helm-lib.dbHost" . }})(PORT={{ include "helm-lib.dbPort" . }}))(CONNECT_DATA=(SID={{ $oraServiceSid }})))"
+  {{- else }}
+  {{- fail "Unable to determine oracle connection string" }}
+  {{- end }}
+  {{- end }}
+  {{- end }}
+
+  onestack.dbTlsEnabled: {{ include "helm-lib.dbTlsEnabled" . | quote }}
+
+  onestack.dbpassword.key: {{ include "helm-lib.dbUserKey" . }}
+
+  {{- if .Values.global.vaultAppRole }}
+  onestack.approle: {{ .Values.global.vaultAppRole }}
+  onestack.approleid: {{ required "Required value not defined: global.vaultRoleId" .Values.global.vaultRoleId }}
+  {{- end }}
+  
+  {{- if .Values.config.syntheticCollector }}
+  onestack.synthetic.svc: {{ required "Required value not defined: syntheticCollector" .Values.config.syntheticCollector | quote }}
+  {{- end }}
+
+  suite.diadmin_addr: {{ include "helm-lib.getDiAdminHost" . | default .Values.diadmin.host }}:{{ include "helm-lib.getDiAdminPort" . | default .Values.diadmin.port }}
+
+  suite.vault_addr: {{ default "https://itom-idm-svc:8200" .Values.global.vault.address | quote }}
+  suite.idm_integration_user: {{ default "integration_admin" .Values.global.idm.integrationUser | quote }}
+  suite.idm_integration_user_password_key: {{ default  "idm_integration_admin_password" .Values.global.idm.integrationUserKey | quote }}
+  suite.idm_transport_user: {{ default  "transport_admin" .Values.global.idm.transportUser | quote }}
+  suite.idm_transport_key: {{ default  "idm_transport_admin_password" .Values.global.idm.transportUserKey | quote }}
+  suite.idm_organization: "Provider"
+  suite.idm_addr: "https://{{ default  "itom-idm-svc" .Values.global.idm.serviceName }}:18443"
+  external.host: {{ .Values.global.externalAccessHost }}
+  external.port: {{ .Values.global.externalAccessPort | quote }}
+
+  onestack.redis.host: {{ default "cs-redis" .Values.redis.host }}
+  onestack.redis.port: {{ default "6380" .Values.redis.port|quote }}
+  onestack.redis.passwdkey: {{ default "redis_pwd" .Values.redis.passwdkey|quote }}
+
+  onestack.connection.sis.adapter: {{ default "https://itom-monitoring-sis-adapter-svc:8080" .Values.sis.adapter | quote }}
+
+  onestack.connection.apm.adapter: {{ default "https://itom-apm-config-sync-service-svc:8443" .Values.apm.adapter | quote }}
+  
+  onestack.connection.threshold.enabled: {{ default "true" .Values.threshold.enabled | quote }}
+  onestack.connection.threshold.servicesUrl: {{ default "https://itom-perf-mgmt-threshold-svc:41000" .Values.threshold.servicesUrl | quote }}
+  
+  onestack.connection.credential.enabled: {{ default "true" .Values.credential.enabled | quote }}
+  onestack.connection.credential.managerUrl: {{ default "https://credential-manager:5333" .Values.credential.managerUrl | quote }}
+  onestack.connection.authoritycheck.enabled: {{ default "true" .Values.authoritycheck.enabled | quote }}
+
+  onestack.connection.rbac.adminRole: {{ default "monitoringServiceAdminRole" .Values.rbac.adminRole | quote }}
+  onestack.connection.rbac.securityUserRole: {{ default "monitoringServiceSecurityUserRole" .Values.rbac.securityUserRole | quote }}
+  onestack.connection.rbac.userRole: {{ default "monitoringServiceUserRole" .Values.rbac.userRole | quote }}
+
+  onestack.log.level: {{ default "INFO" .Values.log.level | quote }}
+  onestack.service.endpoint: "https://{{ .Values.itomopsbridgemonitoringadmin.capname }}-svc:8443"
+  onestack.async.expiry_in_seconds: {{ default "1800" .Values.async.expiryTime | quote }}
+  onestack.connection.obm.svc: {{ default "https://omi:443" .Values.obm.url | quote }}

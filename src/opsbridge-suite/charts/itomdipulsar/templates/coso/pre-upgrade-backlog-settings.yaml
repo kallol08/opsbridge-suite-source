@@ -1,0 +1,241 @@
+{{/* # */}}
+{{/* # Licensed to the Apache Software Foundation (ASF) under one */}}
+{{/* # or more contributor license agreements.  See the NOTICE file */}}
+{{/* # distributed with this work for additional information */}}
+{{/* # regarding copyright ownership.  The ASF licenses this file */}}
+{{/* # to you under the Apache License, Version 2.0 (the */}}
+{{/* # "License"); you may not use this file except in compliance */}}
+{{/* # with the License.  You may obtain a copy of the License at */}}
+{{/* # */}}
+{{/* #   http://www.apache.org/licenses/LICENSE-2.0 */}}
+{{/* # */}}
+{{/* # Unless required by applicable law or agreed to in writing, */}}
+{{/* # software distributed under the License is distributed on an */}}
+{{/* # "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY */}}
+{{/* # KIND, either express or implied.  See the License for the */}}
+{{/* # specific language governing permissions and limitations */}}
+{{/* # under the License. */}}
+{{/* # */}}
+{{- if (lookup "v1" "ServiceAccount" .Release.Namespace (coalesce .Values.deployment.rbac.brokerServiceAccount "itomdipulsar-broker-sa" )) }}
+{{ if .Values.initialize -}}
+{{- if .Values.components.broker }}
+{{- include "pulsar.setCurrentComponentFull" (set . "currentComponent" .Values.broker.component) -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: "{{ .currentComponentFull }}-pre-upgrade-backlog-settings-{{ randAlphaNum 7 | lower }}"
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "pulsar.standardLabels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:  
+  backoffLimit: 1
+  completions: 1
+  parallelism: 1
+  template:
+    metadata:
+      annotations:
+        pod.boostport.com/vault-init-container: install
+        {{- if .Values.global.vaultAppRole }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-{{ .Values.global.vaultAppRole }}
+        {{- else }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-default
+        {{- end }}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: {{ .Values.global.securityContext.user | int64 }}
+        runAsGroup: {{ .Values.global.securityContext.fsGroup | int64 }}
+        fsGroup: {{ .Values.global.securityContext.fsGroup | int64 }}
+        seccompProfile:
+          type: RuntimeDefault
+      {{/* # The init containers will follow the queue from the zookeeper for the node to run on. */}}
+      {{- with ( coalesce .Values.nodeSelector .Values.global.nodeSelector ) }}
+      nodeSelector:
+        {{ toYaml . }}
+      {{- end }}  
+      serviceAccount: {{ .Values.deployment.rbac.brokerServiceAccount | default "itomdipulsar-broker-sa" }}
+      serviceAccountName: {{ .Values.deployment.rbac.brokerServiceAccount | default "itomdipulsar-broker-sa" }} 
+      initContainers:
+    {{- include "helm-lib.waitForVault" . | nindent 6 }}
+    {{- $authsuperuserbroker := (include "auth.superusers.broker" .) }}    
+    {{- $glhost := .Values.global.externalAccessHost -}}
+    {{- $compfull := .currentComponentFull -}}
+    {{ $certNames := printf "Common_Name:%s,Additional_SAN:%s/%s/%s.%s/%s.%s.svc" $authsuperuserbroker $glhost $compfull $compfull .Release.Namespace $compfull .Release.Namespace }}
+    {{- include "helm-lib.containers.vaultInit" (dict "certNames" $certNames "Values" .Values) | nindent 6 }}
+      - name: wait-zookeeper-ready
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: {{ .Values.global.securityContext.user | int64 }}
+          runAsGroup: {{ .Values.global.securityContext.fsGroup | int64 }}
+          seccompProfile:
+            type: RuntimeDefault
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        image: {{ .Values.global.docker.registry }}/{{ .Values.global.docker.orgName }}/{{ .Values.pulsar.image }}:{{ .Values.pulsar.imageTag }}
+        imagePullPolicy: {{ .Values.global.docker.imagePullPolicy }}
+        resources:
+          requests:
+             memory: 512Mi
+             cpu: 0.1
+          limits:
+             memory: 2Gi
+             cpu: 0.5
+        command: ["/bin/bash", "-c"]
+        args:
+          - |
+
+            source bin/coso-init.sh;
+            export K8S_HOST=${KUBERNETES_SERVICE_HOST}
+            export K8S_PORT=${KUBERNETES_SERVICE_PORT_HTTPS}
+            export K8S_TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+            export K8S_NS=$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)
+            export K8S_CERT_PATH=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+            get_zk_configmap_output=$(curl -X GET --cacert $K8S_CERT_PATH -H "Authorization: Bearer $K8S_TOKEN" -H 'Accept: application/json' -H 'Content-Type: application/json'  https://${K8S_HOST}:${K8S_PORT}/api/v1/namespaces/$K8S_NS/configmaps/itomdipulsar-zookeeper)
+            get_zk_configmap_output_rc=$(echo $?)
+            if [[ "$get_zk_configmap_output_rc" -ne 0 ]]; then
+               echo "Result of get configmap for itomdipulsar-zookeeper is $get_zk_configmap_output and result code $get_zk_configmap_output_rc ,so exiting container."
+               exit 126
+            else
+              statuscode=$(echo "$get_zk_configmap_output" | jq -r '.code')
+              echo "Getting zookeeper configmap statuscode $statuscode"
+              if [ $statuscode != "404" ]; then
+                 deployed_version=$(echo "$get_zk_configmap_output" | jq -r '.metadata.labels."app.kubernetes.io/version"')
+                 if [[ $deployed_version  =~ "2.8." ]]; then
+                       echo "Current deployed version of itomdipulsar-zookeeper is $deployed_version ,Going to check zk availability"
+                       {{- if and .Values.tls.enabled .Values.tls.zookeeper.enabled | toString | nindent 8 }}
+                           until bin/pulsar zookeeper-shell -server {{ template "pulsar.fullname" . }}-{{ .Values.zookeeper.component }}:{{ .Values.zookeeper.ports.clientTls }} ls /; do
+                       {{- else }}
+                           until bin/pulsar zookeeper-shell -server {{ template "pulsar.fullname" . }}-{{ .Values.zookeeper.component }}:{{ .Values.zookeeper.ports.client }} ls /; do
+                       {{- end }}
+                      sleep 3;
+                      done;
+                 else
+                   echo "Skipping to set backlog quota on topic level.Current deployed version of itomdipulsar-zookeeper is $deployed_version"
+                   exit 0
+                 fi
+              else
+                echo "Error while getting zookeeper configmap details $get_zk_configmap_output"
+              fi
+            fi
+        volumeMounts:
+        {{- include "pulsar.coso.init.volumeMounts" . | nindent 8 }}
+        {{- include "pulsar.bastion.certs.volumeMounts" . | nindent 8 }}
+        - name: tmp
+          mountPath: /pulsar/tmp
+        - name: conf
+          mountPath: /pulsar/conf
+        - name: logs
+          mountPath: /pulsar/logs
+        - name: ssl
+          mountPath: /pulsar/ssl
+        - name: vault-token
+          mountPath: /var/run/secrets/boostport.com
+      containers:
+      - name: "{{ .currentComponentFull }}-pre-upgrade-backlog-settings"
+        securityContext:        
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        image: {{ .Values.global.docker.registry }}/{{ .Values.global.docker.orgName }}/{{ .Values.pulsar.image }}:{{ .Values.pulsar.imageTag }}
+        imagePullPolicy: {{ .Values.global.docker.imagePullPolicy }}
+        resources:
+          {{ toYaml .Values.brokerSetting.resources | nindent 10 }}
+        command: ["/bin/bash", "-c"]
+        {{/* # This container will set topiclevel backlog quota for 2.8.XX version of pulsar */}}
+        args:
+          - |
+            source bin/coso-init.sh;
+            bin/apply-config-from-env.py conf/client.conf;
+            export K8S_HOST=${KUBERNETES_SERVICE_HOST}
+            export K8S_PORT=${KUBERNETES_SERVICE_PORT_HTTPS}
+            export K8S_TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+            export K8S_NS=$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)
+            export K8S_CERT_PATH=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+            get_broker_configmap_output=$(curl -X GET --cacert $K8S_CERT_PATH -H "Authorization: Bearer $K8S_TOKEN" -H 'Accept: application/json' -H 'Content-Type: application/json'  https://${K8S_HOST}:${K8S_PORT}/api/v1/namespaces/$K8S_NS/configmaps/itomdipulsar-broker)
+            get_broker_configmap_output_rc=$(echo $?)
+            if [[ "$get_broker_configmap_output_rc" -ne 0 ]]; then
+               echo "Result of get configmap for itomdipulsar-broker is $get_broker_configmap_output and result code $get_broker_configmap_output_rc ,so exiting container."
+               exit 126
+            else
+              statuscode=$(echo "$get_broker_configmap_output" | jq -r '.code')
+              echo "Getting broker configmap statuscode $statuscode"
+              if [ $statuscode != "404" ]; then
+                 systemtopicenabled_value=$(echo "$get_broker_configmap_output" | jq -r '.data.systemTopicEnabled')
+                 topiclevelpoliciesenabled_value=$(echo "$get_broker_configmap_output" | jq -r '.data.topicLevelPoliciesEnabled')
+                 deployed_version=$(echo "$get_broker_configmap_output" | jq -r '.metadata.labels."app.kubernetes.io/version"')
+                 echo "Value of systemTopicEnabled is $systemtopicenabled_value and topicLevelPoliciesEnabled is $topiclevelpoliciesenabled_value."
+                 if [[ $deployed_version  =~ "2.8." ]]; then
+                    echo "Current deployed version of itomdipulsar-broker configmap is $deployed_version"
+                    if [[ $systemtopicenabled_value == "true" && $topiclevelpoliciesenabled_value == "true" ]]; then
+                       echo "Executing topic level backlog quota configuration."
+                       java -cp /pulsar/di-config/pulsar-config.jar com.microfocus.pulsar.config.Application ;
+                    else
+                      echo "SystemTopicEnabled and TopicLevelPoliciesEnabled parameters are not set to true,exiting container.Follow preupgrade steps before upgrade."
+                      exit 126
+                    fi
+                 else
+                   echo "Skipping to set backlog quota on topic level.Current deployed version of itomdipulsar-broker is $deployed_version"
+                   exit 0
+                 fi
+              else
+                echo "Error while getting broker configmap details $get_broker_configmap_output"   
+              fi
+            fi
+        envFrom:
+        - configMapRef:
+            name: "{{ .currentComponentFull }}"
+        env:
+        - name: webServiceUrl
+          {{- if and .Values.tls.enabled .Values.tls.broker.enabled }}
+          value: "https://{{ .currentComponentFull }}:{{ .Values.broker.ports.https }}/"
+          {{- else }}
+          value: "http://{{ .currentComponentFull }}:{{ .Values.broker.ports.http }}/"
+          {{- end }}
+        - name: MAX_RETRY_COUNT
+          value: "5"
+        - name: POSTLOAD_NAMESPACE
+          value: "itomdipostload"
+        - name: PULSAR_INTERNAL_NAMESPACE
+          value: "functions"
+        - name: PULSAR_INTERNAL_TENANT
+          value: "pulsar"
+        - name: TLS_HOSTNAME_VERIFICATION
+          value: "false"
+        volumeMounts:
+        - name: tmp
+          mountPath: /pulsar/tmp
+        - name: conf
+          mountPath: /pulsar/conf
+        - name: logs
+          mountPath: /pulsar/logs
+        - name: ssl
+          mountPath: /pulsar/ssl
+        - name: vault-token
+          mountPath: /var/run/secrets/boostport.com
+        {{- include "pulsar.coso.init.volumeMounts" . | nindent 8 }}
+        {{- include "pulsar.bastion.certs.volumeMounts" . | nindent 8 }}
+        {{- include "pulsar.coso.externalcert.volumeMounts" . | nindent 8 }}
+      volumes:
+      {{- include "pulsar.coso.init.volumes" . | nindent 6 }}
+      - name: tmp
+        emptyDir: {}
+      - name: conf
+        emptyDir: {}
+      - name: ssl
+        emptyDir: {}
+      - name: logs
+        emptyDir: {}
+      - name: vault-token
+        emptyDir: {}
+      {{- include "pulsar.bastion.certs.volumes" . | nindent 6 }}
+      {{- include "pulsar.coso.externalcert.volumes" . | nindent 6 }}
+      restartPolicy: OnFailure
+{{- end }}
+{{- end }}
+{{- end }}

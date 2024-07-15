@@ -1,0 +1,14 @@
+{{/*# Copyright 2023 Open Text.*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: itom-zookeeper-cm
+data:
+  jvm.min.heap: {{.Values.itomzookeeper.config.jvmMinHeap }}
+  jvm.max.heap: {{.Values.itomzookeeper.config.jvmMaxHeap }}
+  tick: {{.Values.itomzookeeper.config.tick | quote }}
+  init: {{.Values.itomzookeeper.config.init | quote }}
+  sync: {{.Values.itomzookeeper.config.sync | quote }}
+  client.cnxns: {{.Values.itomzookeeper.config.clientCnxns | quote }}
+  snap.retain: {{.Values.itomzookeeper.config.snapRetain | quote }}
+  purge.interval: {{.Values.itomzookeeper.config.purgeInterval | quote }}

@@ -1,0 +1,17 @@
+{{/*# Copyright 2023 Open Text.*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: itom-pg-backup-config
+  labels:
+    name: itom-pg-backup
+data:
+  FQDN: {{ .Values.global.externalAccessHost | quote }}
+  IDP_HOSTNAME: {{ .Values.global.externalAccessHost | quote }}
+  IDP_PORT: {{ .Values.global.externalAccessPort | quote }}
+  IDM_PROTOCOL: "https"
+  IDM_HOSTNAME: {{ include "helm-lib.getInternalIdmHost" . | default (printf "%s%s" .Values.deployment.idm.namePrefix .Values.deployment.idm.service)  }}
+  IDM_PORT: {{ include "helm-lib.getInternalIdmPort" . | default 18443 | quote }}
+  AUTH_REQUIRED_ROLES: "BACKUP_ADMIN"
+  ITOM_CDF_SSL_CERTS_DIR: "/var/run/secrets/boostport.com"
+  ITOM_BACKUPD_API_KEY_VAULT: "BACKUP_API_KEY"

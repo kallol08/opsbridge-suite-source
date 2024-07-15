@@ -1,0 +1,68 @@
+{{/* # */}}
+{{/* # Copyright 2023 Open Text. */}}
+{{/* # */}}
+{{/* # The only warranties for products and services of Open Text and its affiliates and  */}}
+{{/* # licensors (“Open Text”) are as may be set forth in the express warranty statements  */}}
+{{/* # accompanying such products and services. Nothing herein should be construed as */}}
+{{/* # constituting an additional warranty. Open Text shall not be liable for technical or */}}
+{{/* # editorial errors or omissions contained herein. The information contained herein is  */}}
+{{/* # subject to change without notice. */}}
+{{/* # */}}
+{{/* # Except as specifically indicated otherwise, this document contains confidential  */}}
+{{/* # information and a valid license is required for possession, use or copying. If this work  */}}
+{{/* # is provided to the U.S. Government, consistent with FAR 12.211 and 12.212, Commercial Computer  */}}
+{{/* # Software, Computer Software Documentation, and Technical Data for Commercial Items are licensed to */}}
+{{/* # the U.S. Government under vendor’s standard commercial license. */}}
+{{/* # */}}
+{{- if eq (include "monitoring.alerts_deployment" . ) "true" -}}
+{{- $namespace := .Release.Namespace }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: itom-di-monitoring-alerts
+  namespace: {{ .Release.Namespace }}
+{{- if not (empty ((.Values.defaultRules).annotations)) }}
+  annotations:
+{{ toYaml ((.Values.defaultRules).annotations) | nindent 4 }}
+{{- end }}
+  labels:
+    app: itom-di-monitoring-alerts
+{{- if (((.Values.global).prometheus).prometheusSelector) }}
+{{ toYaml (((.Values.global).prometheus).prometheusSelector) | nindent 4 }}
+{{- end }}
+{{- if not (empty ((.Values.defaultRules).labels)) }}
+{{ toYaml ((.Values.defaultRules).labels) | nindent 4 }}
+{{- end }}
+spec:
+  groups:
+    - name: di-vertica-alert.rules
+      rules:
+        - alert: AllVerticaNodesDown
+          expr:  (absent_over_time(vertica_node_state{node_state="UP"}[5m]) or on () vector(0))>0
+          for: 5m
+          annotations:
+            description: "All Vertica nodes are down for last 5 minutes."
+            summary: "Vertica nodes are down for last 5 minutes."
+          labels:
+            severity: critical
+        - alert: OneOrMoreVerticaNodeDown
+          expr:  (absent_over_time(vertica_node_state{node_state="UP"}[5m]) or on () vertica_node_state{node_state="DOWN"} or on () vector(0))>0
+          for: 5m
+          annotations:
+            description: "Vertica nodes are down for last 5 minutes."
+            summary: "{{`{{`}} $labels.node_name {{`}}`}} Vertica node is down for last 5 minutes."
+          labels:
+            severity: warning
+        - alert: LowVerticaFreeDiskSpace
+          expr: vertica_free_disk_space <40
+          for: 5m
+          annotations:
+            description: "The free disk space available in vertica node {{`{{`}} $labels.node_name {{`}}`}} is {{`{{`}} $value {{`}}`}}%. The storage path {{`{{`}} $labels.storage_path {{`}}`}} is used for {{`{{`}} $labels.storage_usage {{`}}`}}"
+            summary: "The free disk space available in vertica node {{`{{`}} $labels.node_name {{`}}`}} is less than 40%."
+          labels:
+            severity: warning
+{{- if not (empty ((.Values.defaultRules).additionalRuleLabels)) }}
+{{ toYaml .Values.defaultRules.additionalRuleLabels | nindent 12 }}
+{{- end }}
+{{ end }}
+ 

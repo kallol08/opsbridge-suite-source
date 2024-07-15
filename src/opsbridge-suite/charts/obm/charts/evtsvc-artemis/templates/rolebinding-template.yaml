@@ -1,0 +1,35 @@
+{{- /* Copyright 2020-2023 Open Text */ -}}
+
+{{- if .Values.global.rbac.roleCreate }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ .Values.global.evtsvc.namePrefix }}-artemis
+  namespace: {{ .Release.Namespace }}
+  labels:
+{{ include "evtsvc-artemis.labels" . | indent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ .Values.global.evtsvc.namePrefix }}-artemis
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.global.evtsvc.namePrefix }}-artemis
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ .Values.global.evtsvc.namePrefix }}-artemis-vault-client
+  namespace: {{ .Release.Namespace }}
+  labels:
+{{ include "evtsvc-artemis.labels" . | indent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: "microfocus:cdf:itom-vault-client"
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.global.evtsvc.namePrefix }}-artemis
+    namespace: {{ .Release.Namespace }}
+{{- end }}

@@ -1,0 +1,244 @@
+#
+# Copyright 2023 Open Text.
+#
+# The only warranties for products and services of Open Text and its affiliates and licensors (“Open Text”)
+# are as may be set forth in the express warranty statements accompanying such products and services.
+# Nothing herein should be construed as constituting an additional warranty. Open Text shall not be liable
+# for technical or editorial errors or omissions contained herein. The information contained herein is subject
+# to change without notice.
+#
+# Except as specifically indicated otherwise, this document contains confidential information and a valid
+# license is required for possession, use or copying. If this work is provided to the U.S. Government,
+# consistent with FAR 12.211 and 12.212, Commercial Computer Software, Computer Software
+# Documentation, and Technical Data for Commercial Items are licensed to the U.S. Government under
+# vendor’s standard commercial license.
+#
+
+global:
+  # If isDemo is true, this will allow use of ephemeral storage and other POC aspects.
+  isDemo: false
+  expose:
+    ipConfig:
+      ipFamilyPolicy: PreferDualStack
+      ipFamilies:
+  cluster:
+    k8sProvider: cdf
+  persistence:
+    enabled: false
+    configVolumeClaim:
+  preHookSecret:
+  
+  # RBAC 
+  rbac:
+    serviceAccountCreate: true
+    roleCreate: true
+
+  nodeSelector: {}
+
+  # blank by default (instead of not present) to avoid errors
+  apiClient:
+    authorizedClientCAs:
+  # For custom server CAs (incl. for Vertica). tlsTruststore should be the name of a configMap which contains the certs.
+  tlsTruststore:
+
+  # If deployPrometheusConfig is true, CDF Monitoring Framework is assumed to be installed and will use it for metric storage
+  prometheus:
+    deployPrometheusConfig: true
+    prometheusSelector:
+      prometheus_config: "1"
+    scrapeCertSecretName: "itom-di-prometheus-scrape-cert"
+    scrapeCaConfigmapName: "monitoring-ca-certificates"
+
+  docker:
+    registry: localhost:5000
+    orgName: 
+    imagePullSecret: ""
+    imagePullPolicy: IfNotPresent
+  securityContext:
+    user: 1999
+    fsGroup: 1999
+  vaultRenew:
+    image: kubernetes-vault-renew
+    imageTag: 0.11.0-007
+  vaultInit:
+    image: kubernetes-vault-init
+    imageTag: 0.11.0-007
+  toolsBase:
+    image: itom-tools-base
+    imageTag: 1.1.0-0018
+  externalAccessHost: ""
+  vertica:
+    embedded: false
+    host:
+    rwuser:
+    rwuserkey: ITOMDI_DBA_PASSWORD_KEY
+    rouser:
+    rouserkey: ITOMDI_DBA_PASSWORD_KEY
+    db:
+    port:
+    tlsEnabled: "true"
+  #Will be used as a suffix for schema names
+  di:
+    tenant: "provider"
+    deployment: "default"
+    pulsar:
+      tenant:
+      namespace:     
+    proxy:
+      nodePorts:
+        https:
+        pulsarssl:
+  ## Configuration for Cloud support - Start
+    cloud:
+      externalDNS:
+        enabled: false
+      externalAccessHost:
+        pulsar:
+  ## Configuration for Cloud support - End
+    logging:
+      useFile: true
+  ## Feature toggle avro schema evolution
+    avroSchemaEvolutionEnabled: false
+  ## Enable multitenancy
+    multiTenantEnabled: false
+  #max tenants allowed
+    maxAllowedTenants: "10"
+  fluentbit:
+    fluentbitSelector:
+      labelName: "deployment.microfocus.com/fluentbit-config"
+      labelValue: "true"
+
+scheduler:
+  image: itom-data-ingestion-udx-scheduler
+  imageTag: 2.12.1-7
+  version: 2.12.1-7
+  component: scheduler
+  port: 8443
+  config:
+    apiClient:
+      authorizedClientCAs:
+    jvmArgs: ""
+  configData:
+    threads: 6
+    logLevel: info
+    udxLogLevel: error
+    loadFactor: 1
+    batch:
+      duration: 4
+      # Valid units are minutes|seconds|milliseconds|microseconds
+      units: seconds
+    copyRead:
+      timeout: 500
+      # Valid units are minutes|seconds|milliseconds|microseconds
+      units: milliseconds
+    receiverQueue:
+      size: 2000
+    enablePerformanceTest: false
+    pulsar:
+      tlsHostnameVerification: "false"
+      authClass: "org.apache.pulsar.client.impl.auth.AuthenticationTls"
+      enableMessageAcknowledgement: "true"
+    pulsarAdmin: 
+      host: itomdipulsar-proxy #This is for go scheduler
+      port: 8443 #This is for go scheduler
+    history:
+      retention: 90 #days
+    heartbeat:
+      timeout: 1 #seconds
+    env:
+      SCHED_PULSAR_UDX_TABLE: microbatch_history
+      SCHED_SMALL_TOPIC_SIZE: "0"
+    scheduler:
+      jdbcOpts: ""
+      explicitStatementExecution: "false"    #explicitStatementExecution: "true"
+      pulsarTopicAutoRefreshEnabled: "false"
+      parserParameters: "flatten_arrays=True,flatten_maps=True"
+      enableRestartSchedulerJob: "false"
+      maxMemoryUsagePercentage: "65.0"
+      maxMinutesPastLastBatchUpdate: "5.0"
+      restartTimeIntervalInHours: "6"
+      frameDuration: "00:00:30"
+      udxPulsarClientCleanUp: "false"
+      laneWorkerConnectionCloseThreshold: "15"
+      vdbConnectionCloseThreshold: "100"
+      udxPulsarClientCleanupThreshold: "20"
+      aliveCheckTimeIntervalSeconds: "60"
+      dataRetentionJobCronSchedule: "0 0 0 * * *"
+      enableDataRetentionJob: "true"
+      enableUdxHasMessageCheck: "true"
+      copyLoadMethod: "AUTO"
+      enableFrameBacklogCheck: "true"
+      enableMicrobatchBacklogCheck: "true"
+      udxAckGroupingTimeMillis: "0"
+      udxMaxMessageCount: "0"
+      udxMaxStreamSizeBytes: "0"
+      udxTlsHostnameVerification: "false"  ## This has been added to support TLS HostName Verification in UDx alone. UDx connects to pulsar via proxy. 
+      staggeredSleepDurationMillis: "0"    
+      enableRpmVersionCheck: "true"
+      supportedVerticaVersions: "v11.1.1,v12.0.1,v12.0.3,v12.0.4,v23.4.0,v24.1.0"
+      supportedUdxRpmVersions: "2.5,2.6,2.7,2.8,2.9,2.10,2.12"
+      enableSubscriptionCleaner: "true"
+      logConfigFromConfigmap: true
+      enableSharedVertica: "true"
+      pulsarTenantProviderName: "public"
+      serverTlsEnabledProtocols: "TLSv1.2,TLSv1.3"
+      constantSleepDurationMilliSeconds: "-1"
+      minMicrobatchDurationMilliSeconds: "1200"
+      configServer:
+        connectRetryDelayMs: "30000"
+        clientHeartBeat: "20000"
+        serverHeartBeat: "30000"
+        messageBufferSizeLimitInMb: "2"
+        failedEventInitialDelayMillis: "60000"
+        failedEventRetryDelayMillis: "60000"
+      readTimeOutResiliency:
+        enable: "true"
+        noMsgReadCopyCount: "10"
+      #max tenants allowed
+      maxAllowedTenants: "10"
+
+      # Set the resoruce pool the executer should use within vertica.
+      # Otherwise the itom_di_stream_respool_tenant_namespace will be used.
+      # Where public and default will match the global.di.tenant and global.di.namespace.
+      # SCHED_VERTICA_RESOURCE_POOL: your_favorite_pool 
+  resources:
+    requests:
+      memory: 512Mi
+      cpu: 500m
+    limits:
+      memory: 2Gi
+      cpu: 1
+  prehook:
+    resources:
+      requests:
+        memory: 50Mi
+        cpu: 50m
+      limits:
+        memory: 1Gi
+        cpu: 1
+nodeSelector: {}
+deployment:
+  rbac:
+    serviceAccount: "" 
+## Configuration that needs to be read from other ITOM DI components - Start
+proxy:
+  serviceName: 
+  ports:
+    http: 8080
+    https: 8443
+    pulsar: 6650
+    pulsarssl: 6651
+  nodePorts:
+    http: 30011
+    https: 31001
+    pulsar: 30050
+    pulsarssl: 31051
+broker:
+  ports:
+    http: 8080
+    pulsar: 6650
+diadmin:
+  config:
+    adminPort: 18443
+    adminServiceName: itom-di-administration-svc
+## Configuration that needs to be read from other ITOM DI components - End

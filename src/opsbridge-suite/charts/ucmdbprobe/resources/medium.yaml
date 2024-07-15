@@ -1,0 +1,10 @@
+resources:
+  requests:
+    cpu: 100m
+    memory: 2Gi
+  limits:
+    cpu: 4
+    memory: 12Gi
+jvmXmsMemory: 512
+jvmXmxMemory: 9216
+jvmMetaspace: 1024M

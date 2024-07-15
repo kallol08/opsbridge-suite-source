@@ -1,0 +1,10 @@
+apiVersion: v2
+appVersion: 1.1.0
+dependencies:
+- name: helm-lib
+  repository: https://svsartifactory.swinfra.net/artifactory/itom-helm-charts-stable
+  version: 1.9.0-14
+description: Helm chart to restrict upgrade pf optic DL consumer before provider has
+  been upgraded
+name: itom-restrict-upgrade
+version: 1.2.42

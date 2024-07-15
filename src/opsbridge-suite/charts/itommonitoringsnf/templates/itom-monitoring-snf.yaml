@@ -1,0 +1,292 @@
+{{/*# Copyright 2023 Open Text.*/}}
+
+{{/*# The only warranties for products and services of Open Text and its affiliates*/}}
+{{/*# and licensors ("Open Text") are as may be set forth in the express warranty*/}}
+{{/*# statements accompanying such products and services. Nothing herein should be*/}}
+{{/*# construed as constituting an additional warranty. Open Text shall not be*/}}
+{{/*# liable for technical or editorial errors or omissions contained herein. The*/}}
+{{/*# information contained herein is subject to change without notice.*/}}
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    deployment.microfocus.com/default-replica-count: "1"
+    deployment.microfocus.com/runlevel: UP
+  name: itom-monitoring-snf
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: itom-monitoring-snf-app
+spec:
+  replicas: {{ .Values.itommonitoringsnf.config.replicaCount }}
+  selector:
+    matchLabels:
+      app: itom-monitoring-snf-app
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1  
+  template:
+    metadata:
+      labels:
+        app: itom-monitoring-snf-app
+        app.kubernetes.io/name: itom-monitoring-snf
+        app.kubernetes.io/managed-by: {{ .Release.Namespace }}
+        app.kubernetes.io/version: {{ .Values.itommonitoringsnf.imageTag }}
+        itom.microfocus.com/capability: HyperscaleObservability
+        tier.itom.microfocus.com/backend: backend
+        itom.microfocus.com/description: Store_and_forward_retry_mechanism
+      annotations:
+        {{- if .Values.global.vaultAppRole }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-{{ .Values.global.vaultAppRole }}
+        {{- else }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-default
+        {{- end }}
+        pod.boostport.com/vault-init-container: install
+        prometheus.io/port: "8080"
+        prometheus.io/scrape: "true"
+    spec:
+      serviceAccountName: {{ .Values.deployment.rbac.serviceAccount }}
+      securityContext:
+        runAsUser: {{ .Values.global.securityContext.user }}
+        fsGroup: {{ .Values.global.securityContext.fsGroup }}
+        runAsGroup: {{ .Values.global.securityContext.fsGroup }}
+      {{- with ( coalesce .Values.nodeSelector .Values.global.nodeSelector ) }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+      {{- $certNames := printf "Common_Name:itom-monitoring-snf,Additional_SAN:itom-monitoring-snf/itom-monitoring-snf.%s/itom-monitoring-snf.%s.svc.cluster.local/itom-monitoring-snf/itom-monitoring-snf-svc/itom-monitoring-snf-svc.%s/itom-monitoring-snf-svc.%s.svc.cluster.local,Secret:itom-monitoring-snf-metrics-client,UpdateSecret:true,File_Name:server" .Release.Namespace .Release.Namespace .Release.Namespace .Release.Namespace -}}
+      {{- include "helm-lib.containers.vaultInit" (dict "containerName" "install" "certNames" $certNames "Values" .Values) | nindent 6 }}
+    
+      {{- if .Values.global.database.internal }}
+      {{- include "helm-lib.waitFor" ( dict "service" "itom-postgresql" "port" "5432" "Values" .Values) | nindent 6 }}
+      {{- end }}
+      {{- if (((.Values.global).opsBridge).externalAccessHost) }}
+      {{- include "helm-lib.waitFor" ( dict "service" "itom-monitoring-admin-svc" "port" "8443" "Values" .Values) | nindent 6 }}
+      {{- end }}
+      {{- include "helm-lib.waitFor" ( dict "service" "cs-redis" "port" "6380" "Values" .Values) | nindent 6 }}  
+      containers:
+      {{- include "helm-lib.containers.vaultRenew" (dict "containerName" "kubernetes-vault-renew" "Values" .Values) | nindent 6 }}
+      - name: itom-monitoring-snf
+        image: {{ .Values.global.docker.registry }}/{{ .Values.global.docker.orgName }}/{{ .Values.itommonitoringsnf.image }}:{{ .Values.itommonitoringsnf.imageTag }}
+        ports:
+        - containerPort: 8080
+          name: prometheus-snf
+          protocol: TCP
+        imagePullPolicy: {{ .Values.global.docker.imagePullPolicy }}
+        livenessProbe:
+          httpGet:
+            path: /v1/snf/health
+            port: 9998
+            scheme: HTTPS
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /v1/snf/health
+            port: 9998
+            scheme: HTTPS
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 3
+        resources:    
+          limits:
+            cpu: {{ .Values.deployment.resources.limits.cpu }}
+            memory: {{ .Values.deployment.resources.limits.memory }}
+          requests:
+            cpu: {{ .Values.deployment.resources.requests.cpu }}
+            memory: {{ .Values.deployment.resources.requests.memory }}
+        volumeMounts:
+          - name: vault-token
+            mountPath: /var/run/secrets/boostport.com
+          - name: snf-log-volume
+            mountPath: /logs
+            subPath: cloud-monitoring/snf
+          {{- if .Values.global.database.tlsTruststore }}
+          - name: suite-ca-certificates
+            mountPath: /service/suite-ca-certificates
+          {{- end }}
+          {{- if (or .Values.deployment.database.tlsEnabled .Values.global.database.tlsEnabled) }}
+          {{- if eq (include "helm-lib.dbType" . ) "oracle" }}
+          - name: oracle-wallet-configmap
+            mountPath: /oracle
+          - name: oracle-wallet-volume
+            mountPath: /opt/monitoring-snf/oracle/wallet
+          {{- else }}
+          - name: global-certs-volume
+            mountPath: /var/run/secrets/global-certs-vol
+          {{- end }}
+          {{- end }}
+        securityContext:
+          allowPrivilegeEscalation: false          
+        env:
+        - name: MY_CONTAINER_NAME
+          value: itom-monitoring-snf
+        - name: DB_STORAGE_ALLOCATED
+          value: {{ .Values.itommonitoringsnf.config.dbstorageallocated }}
+        - name: "DB_INTERNAL"
+          value: {{ .Values.global.database.internal | quote }}
+        - name: "DB_ENABLE_TLS"
+          value: {{ .Values.global.database.tlsEnabled | quote }}
+        - name: "DB_TYPE"
+          valueFrom:
+            configMapKeyRef:
+              name: {{ .Values.itommonitoringsnf.capname }}-cm
+              key: onestack.dbType
+        - name: "DB_USER_NAME"
+          valueFrom:
+            configMapKeyRef:
+              name: {{ .Values.itommonitoringsnf.capname }}-cm
+              key: onestack.dbuser
+        - name: "DB_PASSWORD_KEY"
+          valueFrom:
+            configMapKeyRef:
+              name: {{ .Values.itommonitoringsnf.capname }}-cm
+              key: onestack.dbpassword.key
+        - name: "DB_HOST_NAME"
+          valueFrom:
+            configMapKeyRef:
+              name: {{ .Values.itommonitoringsnf.capname }}-cm
+              key: onestack.dbhost
+        - name: "DB_PORT"
+          valueFrom:
+            configMapKeyRef:
+              name: {{ .Values.itommonitoringsnf.capname }}-cm
+              key: onestack.dbport
+        - name: "DB_NAME"
+          valueFrom:
+            configMapKeyRef:
+              name: {{ .Values.itommonitoringsnf.capname }}-cm
+              key: onestack.dbname
+        - name: "DB_SCHEMA"
+          valueFrom:
+            configMapKeyRef:
+              name: {{ .Values.itommonitoringsnf.capname }}-cm
+              key: onestack.dbschema
+        - name: "ORACLE_CONNECTION_STRING"
+          valueFrom:
+            configMapKeyRef:
+              name: {{ .Values.itommonitoringsnf.capname }}-cm
+              key: onestack.dbConnectionString
+        - name: "DB_DIALECT"
+          valueFrom:
+            configMapKeyRef:
+              name: {{ .Values.itommonitoringsnf.capname }}-cm
+              key: onestack.dbdialect
+        - name: "SSL_CLIENT_AUTHENTICATION"
+          valueFrom:
+            configMapKeyRef:
+              name: {{ .Values.itommonitoringsnf.capname }}-cm
+              key: onestack.sslClientAuthentication
+        - name: SSL_SERVER_DN_MATCH
+          valueFrom:
+            configMapKeyRef:
+              name: {{ .Values.itommonitoringsnf.capname }}-cm
+              key: onestack.sslServerDnMatch
+        - name: "DI_SERVER_URL"
+        {{- if not (((.Values.global).opsBridge).externalAccessHost) }}
+          value: {{ .Values.global.desProtocol | default "https" }}://{{ .Values.itommonitoringsnf.config.desreceiversvc }}:{{ .Values.itommonitoringsnf.config.desreceiverport }}/itomdi/receiver
+        {{- else }}
+          value: {{ .Values.global.desProtocol | default "https" }}://{{ .Values.global.opsBridge.externalAccessHost | default .Values.itommonitoringsnf.config.desreceiversvc }}:{{ .Values.global.opsBridge.desExternalPort | default .Values.itommonitoringsnf.config.desreceiverport }}/itomdi/receiver
+        - name: EDGE_HOST
+          value: {{ required "Required value is not defined: .Values.global.externalAccessHost" .Values.global.externalAccessHost }}
+        - name: IDM_USER
+          value: {{ .Values.global.idm.integrationUser | default "integration_admin" | quote }}
+        - name: IDM_KEY
+          value: {{ .Values.global.idm.integrationUserKey | default "idm_integration_admin_password" | quote }}
+        - name: IDM_ADDR
+          value: https://{{ .Values.global.idm.serviceName | default "itom-idm-svc" }}:{{ .Values.global.idm.internalPort | default "18443" }}/idm-service/v3.0/tokens
+        - name: "SAAS_EXTERNAL_HOST"
+          value: {{ required "Required value is not defined: .Values.global.opsBridge.externalAccessHost" .Values.global.opsBridge.externalAccessHost | quote }}
+        - name: "SAAS_EXTERNAL_PORT"
+          value: {{ required "Required value is not defined: .Values.global.opsBridge.externalAccessPort" .Values.global.opsBridge.externalAccessPort | quote }}
+        {{- if (((.Values.global).opsBridge).proxy.host) }}
+        - name: HTTP_PROXY
+          value: {{ .Values.global.opsBridge.proxy.scheme | default "https"}}://{{ .Values.global.opsBridge.proxy.host }}:{{ .Values.global.opsBridge.proxy.port }}
+        - name: HTTPS_PROXY
+          value: {{ .Values.global.opsBridge.proxy.scheme | default "https"}}://{{ .Values.global.opsBridge.proxy.host }}:{{ .Values.global.opsBridge.proxy.port }}
+        - name: NO_PROXY
+          value: {{ .Values.global.opsBridge.noproxy | default "localhost,127.0.0.1,credential-manager,itom-monitoring-admin-svc,itom-idm-svc" }}
+        - name: PROXY_USER
+          value: {{ .Values.global.opsBridge.proxy.user }}
+        - name: PROXY_PASSWORD
+          value: {{ .Values.global.opsBridge.proxy.password }}
+        {{- end }}
+        {{- end }}
+        - name: "DEFAULT_HTTP_TIMEOUT"
+          value: {{ .Values.itommonitoringsnf.config.defaultTimeout | quote }}
+        - name: "INPUT_BUFFER_LEN"
+          value: {{ .Values.itommonitoringsnf.config.defaultInputLen | quote }}
+        - name: "MAX_NUM_ROWS"
+          value: {{ .Values.itommonitoringsnf.config.defaultMaxRows | int64 | quote }}
+        - name: "FETCH_ROW_LIMIT"
+          value: {{ .Values.itommonitoringsnf.config.defaultFetchRowLimit | quote }}
+        - name: "PROMETHEUS_METRICS_PORT"
+          value: "8080"
+        - name: "LOG_LEVEL"
+          value: "INFO"
+        - name: "CLIENT_TLS"
+          value: "TRUE"          
+        - name: "PING_DB_ENABLED"
+          value: "FALSE"
+        - name: "CDF_NAMESPACE"
+          value: {{ .Release.Namespace | quote }}
+        {{- if .Values.global.vaultAppRole }}
+        - name: "VAULT_ROLE_ID"
+          value: {{ .Values.global.vaultRoleId | quote }}
+        - name: "VAULT_APP_ROLE"
+          value: {{ .Values.global.vaultAppRole | quote }}
+        {{- end }}
+        - name: "REDIS_URL"
+          value: {{ .Values.redis.svcname }}:{{ .Values.redis.port }}
+        - name: "REDIS_SRV_BASE_NAME"
+          value: {{ .Values.redis.srvbasename }}
+        - name: "REDIS_PWD_KEY"
+          value: {{ .Values.redis.passwdkey }} 
+        - name: "CS_LOG_FILE"
+          value: "monitoring-snf.log"
+        - name: "VAULT_SECRET_DIR"
+          value: /var/run/secrets/boostport.com
+        - name: "RESURRECTION_DELAY"
+          value: {{ .Values.itommonitoringsnf.config.resurrectionDelayInSeconds | quote }}
+        - name: MY_NODE_NAME
+          valueFrom:
+           fieldRef:
+            fieldPath: spec.nodeName
+        - name: MY_POD_NAME
+          valueFrom:
+           fieldRef:
+            fieldPath: metadata.name
+        - name: MY_POD_NAMESPACE
+          valueFrom:
+           fieldRef:
+            fieldPath: metadata.namespace
+        - name: MY_POD_IP
+          valueFrom:
+           fieldRef:
+            fieldPath: status.podIP
+      volumes:
+      - name: snf-log-volume
+        {{- include "helm-lib.pvcStorage" (dict "claim" "logVolumeClaim" "Release" .Release "Template" .Template "Values" .Values ) | nindent 8 }}
+        {{- if .Values.global.database.tlsTruststore }}
+      - name: suite-ca-certificates
+        configMap:
+          name: {{ .Values.global.database.tlsTruststore }}
+        {{- end }}
+      - name: vault-token
+        emptyDir: {}
+      {{- if (or .Values.deployment.database.tlsEnabled .Values.global.database.tlsEnabled) }}
+      {{- if eq (include "helm-lib.dbType" . ) "oracle" }}
+      - name: oracle-wallet-configmap
+        configMap:
+          name: {{ coalesce .Values.deployment.database.oracleWalletName .Values.global.database.oracleWalletName }}
+      - name: oracle-wallet-volume
+        emptyDir: {}
+      {{- else }}
+      - name: global-certs-volume
+        configMap:
+          name: {{ coalesce .Values.deployment.database.tlsTruststore .Values.global.database.tlsTruststore .Values.global.tlsTruststore }}
+      {{- end }}
+      {{- end }}

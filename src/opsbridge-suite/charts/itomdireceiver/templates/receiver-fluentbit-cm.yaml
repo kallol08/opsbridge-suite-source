@@ -1,0 +1,55 @@
+{{/* # */}}
+{{/* # Copyright 2023 Open Text. */}}
+{{/* # */}}
+{{/* # The only warranties for products and services of Open Text and its affiliates and  */}}
+{{/* # licensors (“Open Text”) are as may be set forth in the express warranty statements  */}}
+{{/* # accompanying such products and services. Nothing herein should be construed as */}}
+{{/* # constituting an additional warranty. Open Text shall not be liable for technical or */}}
+{{/* # editorial errors or omissions contained herein. The information contained herein is  */}}
+{{/* # subject to change without notice. */}}
+{{/* # */}}
+{{/* # Except as specifically indicated otherwise, this document contains confidential  */}}
+{{/* # information and a valid license is required for possession, use or copying. If this work  */}}
+{{/* # is provided to the U.S. Government, consistent with FAR 12.211 and 12.212, Commercial Computer  */}}
+{{/* # Software, Computer Software Documentation, and Technical Data for Commercial Items are licensed to */}}
+{{/* # the U.S. Government under vendor’s standard commercial license. */}}
+{{/* # */}}
+{{- $enableDebug := .Values.enableStdOutInFluentBit -}}
+{{- $prefix := "di-receiver" }}
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $prefix }}-fluentbit
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{ .Values.global.fluentbit.fluentbitSelector.labelName }}: {{ .Values.global.fluentbit.fluentbitSelector.labelValue | quote }}
+
+data:
+  {{ $prefix }}-parsers.conf: |-
+    [PARSER]
+        Name        odl-receiver
+        Format      regex
+        Regex       /^(?<time>\d+\-\d+\-\d+(\s+)\d+\:\d+\:\d+.\d+)(\s+)(\[[a-z-\d+]+\])(\s+)(?<level>[A-Z]+)(\s+)(?<message>.*)$/gm
+        Time_Key    time
+        Time_Format %Y-%m-%d %H:%M:%S.%L
+
+  {{ $prefix }}-input.conf: |-
+    [INPUT]
+        Name              tail
+        Tag               odlreceiver-app.*
+        Path              /fluentbit/deployment-log/di/receiver/__*receiver*/receiver-itom-di-receiver*.log
+        Multiline         On
+        Inotify_Watcher   false
+        Parser_FirstLine  odl-receiver
+    [FILTER]
+        Name       grep
+        Match      odlreceiver-app.*
+        Regex      log /WARN|ERROR|FATAL/
+
+  {{- if $enableDebug }}
+    [OUTPUT]
+        Name          stdout
+        Match         odlreceiver*
+  {{- end }}
+ 

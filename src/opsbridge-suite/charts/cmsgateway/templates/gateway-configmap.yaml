@@ -1,0 +1,52 @@
+{{- $namePrefix := include "namePrefix" . -}}
+{{- $installVersion := include "ucmdb.installVersion" (dict "name" (printf "%s-cms-gateway" ($namePrefix)) "default" "11.6.6.51" "Chart" .Chart "Release" .Release) -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ printf "%s-cms-gateway-configmap" ($namePrefix) }}
+  labels:
+    name: {{ .Chart.Name }}
+    {{- include "ucmdb.labels" . | nindent 4 }}
+data:
+{{ $dbCreateDb := include "helm-lib.dbCreateDb" . | lower }}
+{{ $dbType := include "helm-lib.dbType" . | quote }}
+{{ $dbHost := include "helm-lib.dbHost" . | quote }}
+{{ $dbPort := include "helm-lib.dbPort" . }}
+{{ $dbUser := include "helm-lib.dbUser" . | quote }}
+{{ $dbSchema := coalesce (include "ucmdbserver.injectGlobalVar" (dict "var" "database.schema" "Release" .Release "Template" .Template "Values" .Values )) (include "helm-lib.dbUser" .) | quote }}
+{{ $dbName := include "helm-lib.dbName" . | quote }}
+{{ $oracleSid := include "helm-lib.dbOracleSid" . | quote }}
+{{ $oracleServiceName := include "helm-lib.dbOracleServiceName" . | quote }}
+{{ $oracleConnectionString := include "helm-lib.dbOracleConnectionString" . | quote }}
+{{ $oracleDefaultTablespace := coalesce .Values.deployment.database.oracleDefaultTablespace .Values.global.database.oracleDefaultTablespace "n/a" | quote }}
+{{ $oracleTemporaryTablespace := coalesce .Values.deployment.database.oracleTemporaryTablespace .Values.global.database.oracleTemporaryTablespace "n/a" | quote }}
+{{ $oracleEncWallet := coalesce .Values.deployment.database.oracleEncWallet .Values.global.database.oracleEncWallet "n/a" | quote }}
+{{ $dbTlsEnabled := coalesce (quote .Values.deployment.database.tlsEnabled) (quote .Values.global.database.tlsEnabled) }}
+  config.yaml: |-
+{{- range $key, $val := .Values.deployment }}
+  {{- if eq $key "database" }}
+    database:
+      enabled: "false"
+      {{- if and $.Release.IsUpgrade (include "ucmdb.versionConvertor" (dict "version" $installVersion) | semver | (semver "11.6.7-0").Compare | eq 1) }}
+      createdb: {{ $dbCreateDb }}
+      type: {{ $dbType }}
+      host: {{ $dbHost }}
+      port: {{ $dbPort }}
+      user: {{ $dbUser }}
+      schema: {{ $dbSchema }}
+      dbName: {{ $dbName }}
+      oracleSid: {{ $oracleSid }}
+      oracleServiceName: {{ $oracleServiceName }}
+      oracleConnectionString: {{ $oracleConnectionString }}
+      oracleDefaultTablespace: {{ $oracleDefaultTablespace }}
+      oracleTemporaryTablespace: {{ $oracleTemporaryTablespace }}
+      tlsEnabled: {{ $dbTlsEnabled }}
+      pgTlsMode: {{ $.Values.deployment.database.pgTlsMode }}
+      tlsCert: /cms-gateway/ssl/trustedCAs.crt
+      oracleEncWallet: {{ $oracleEncWallet }}
+      {{- end }}
+  {{ else }}
+  {{ $key | indent 2}}:
+{{ toYaml $val | indent 6}}
+  {{- end -}}
+{{ end -}}

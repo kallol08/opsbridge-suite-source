@@ -1,0 +1,82 @@
+{{- if (((.Values.global.services).opticReporting).deploy) }}
+
+{{- $enableDebug := .Values.enableStdOutInFluentBit -}}
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: reporting-fluentbit-cm
+  labels:
+    {{ .Values.global.fluentbit.fluentbitSelector.labelName }}: {{ .Values.global.fluentbit.fluentbitSelector.labelValue | quote }}
+
+data:
+  reporting-parsers.conf: |-
+    [PARSER]
+        Name        reporting-perl-warn-error-fatal
+        Format      regex
+        Regex       /^(?<time>\d+\/\d{2}\/\d{2}\s+\d{2}:\d{2}:\d{2})(\s+)(\/taskexecutor.*\bmain::(.*))(\d+)(\s+)(?<level>[A-Z]+)(\s+)(?<message>.+)$
+        Time_Key    time
+        Time_Format %Y-%m-%d %H:%M:%S.%L
+
+  reporting-input.conf: |-
+    [INPUT]
+        Name              tail
+        Tag               tail.agentlesslog
+        Path              /fluentbit/deployment-log/reports/agentless_infra/*.log
+        Multiline         On
+        Parser_FirstLine  reporting-perl-warn-error-fatal
+
+    [INPUT]
+        Name              tail
+        Tag               tail.agentlog
+        Path              /fluentbit/deployment-log/reports/agent_infra/*.log
+        Multiline         On
+        Parser_FirstLine  reporting-perl-warn-error-fatal
+
+    [INPUT]
+        Name              tail
+        Tag               tail.sysinfralog
+        Path              /fluentbit/deployment-log/reports/system_infra/*.log
+        Multiline         On
+        Parser_FirstLine  reporting-perl-warn-error-fatal
+
+    [INPUT]
+        Name              tail
+        Tag               tail.eventlog
+        Path              /fluentbit/deployment-log/reports/event/*.log
+        Multiline         On
+        Parser_FirstLine  reporting-perl-warn-error-fatal
+    
+    [INPUT]
+        Name              tail
+        Tag               tail.cmdblog
+        Path              /fluentbit/deployment-log/reports/cmdb/*.log
+        Multiline         On
+        Parser_FirstLine  reporting-perl-warn-error-fatal
+
+    [INPUT]
+        Name              tail
+        Tag               tail.shlog
+        Path              /fluentbit/deployment-log/reports/service_health/*.log
+        Multiline         On
+        Parser_FirstLine  reporting-perl-warn-error-fatal
+
+    [INPUT]
+        Name              tail
+        Tag               tail.bpmlog
+        Path              /fluentbit/deployment-log/reports/opsb_synthetic_trans/*.log
+        Multiline         On
+        Parser_FirstLine  reporting-perl-warn-error-fatal
+ 
+
+    [FILTER]
+        Name       grep
+        Match      tail.agentlesslog,tail.agentlog,tail.sysinfralog,tail.eventlog,tail.cmdblog,tail.shlog,tail.bpmlog
+        Regex      log /WARN|ERROR|FATAL/        
+
+  {{- if $enableDebug }}
+    [OUTPUT]
+        Name          stdout
+        Match         tail.agentlesslog,tail.agentlog,tail.sysinfralog,tail.eventlog,tail.cmdblog,tail.shlog,tail.bpmlog
+  {{- end }}
+  {{- end }}

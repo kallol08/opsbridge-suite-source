@@ -1,0 +1,126 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: itom-analytics-aec-init-job-{{ randAlphaNum 5 | lower }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- template "aec.defaultLabels" (dict "NameSuffix" "aec-init-job" "Version" .Values.aecImages.aecInitializer.imageTag "Component" "aec-initializer" "HelmRelease" .Release.Name "Chart" .Chart) }}
+spec:
+  template:
+    metadata:
+      annotations:
+        {{- if .Values.global.vaultAppRole }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-{{ .Values.global.vaultAppRole }}
+        {{- else }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-default
+        {{- end }}
+        pod.boostport.com/vault-init-container: install
+      labels:
+        itom.microfocus.com/capability: aiops
+    spec:
+      serviceAccountName: {{ .Values.deployment.rbac.serviceAccount }}
+      securityContext:
+        runAsUser: {{ .Values.global.securityContext.user }}
+        runAsGroup: {{ .Values.global.securityContext.fsGroup }}
+        fsGroup: {{ .Values.global.securityContext.fsGroup }}
+        runAsNonRoot: true
+      initContainers:
+      {{- include "helm-lib.containers.vaultInit" (dict "certNames" "itom-analytics" "Values" .Values) | nindent 6 }}
+      {{ include "aec.cacertBundler" . | nindent 6 }}
+      containers:
+      - name: aec-initializer
+        image: {{ coalesce .Values.aecImages.aecInitializer.dockerRegistry .Values.docker.registry .Values.global.docker.registry -}}
+        / {{- coalesce .Values.aecImages.aecInitializer.orgName .Values.docker.orgName .Values.global.docker.orgName -}}
+        / {{- .Values.aecImages.aecInitializer.image -}}
+        : {{- .Values.aecImages.aecInitializer.imageTag }}
+        imagePullPolicy: {{ .Values.global.docker.imagePullPolicy }}
+        env:
+        - name: "IS_VERTICA_EMBEDDED"
+          value: "{{ .Values.global.vertica.embedded }}"
+        - name: "EXTERNAL_VERTICA_HOSTNAMES"
+          value: {{ .Values.global.vertica.host }}
+        - name: "EXTERNAL_VERTICA_PORT"
+          value: "{{ .Values.global.vertica.port }}"
+        - name: "EXTERNAL_VERTICA_DB"
+          value: {{ .Values.global.vertica.db }}
+        - name: "EXTERNAL_VERTICA_USERNAME"
+          value: {{ .Values.global.vertica.rwuser }}
+        - name: "EXTERNAL_VERTICA_RO_USERNAME"
+          value: {{ .Values.global.vertica.rouser }}
+        - name: "EXTERNAL_VERTICA_PASS_KEY"
+          value: {{ .Values.global.vertica.rwuserkey }}
+        - name: "EXTERNAL_VERTICA_TLS_MODE"
+          value: "{{ .Values.global.vertica.tlsEnabled }}"
+        - name: "EXTERNAL_VERTICA_CACERT_PATH"
+          value: {{ .Values.cacerts.folder }}/{{ .Values.cacerts.file }}
+        - name: "AEC_BACKGROUND_POOL"
+          value: {{ include "aec.backgroundResourcepool" . | quote }}
+        - name: "AEC_INTERACTIVE_POOL"
+          value: {{ include "aec.interactiveResourcepool" . | quote }}
+        - name: "ITOM_ANALYTICS_SCHEMA"
+          value: "itom_analytics_
+               {{- if hasKey .Values.global.di "tenant" }} {{- .Values.global.di.tenant -}} {{ else -}} provider {{- end }}_
+                 {{- if hasKey .Values.global.ea "deployment" }} {{- .Values.global.ea.deployment -}} {{ else -}} {{ .Values.global.di.deployment }} {{- end }}"
+        - name: "DI_URL"
+          value: "https://{{ include "helm-lib.getDiAdminHost" . | default "itom-di-administration-svc" }}:{{ include "helm-lib.getDiAdminPort" . | default "18443" }}"
+        - name: "TLS_CA_FILE"
+          value: {{ .Values.cacerts.folder }}/{{ .Values.cacerts.file }}
+        - name: "LOG_LEVEL"
+          value: "info"
+        - name: "PULSAR_HOST"
+          value: {{ include "helm-lib.getDiPulsarProxyHost" . | default "itomdipulsar-proxy" }}
+        - name: "PULSAR_ADMIN_PORT"
+          value: {{ include "helm-lib.getDiPulsarProxyWebPort" . | default "8443" | quote }}
+        - name: "PULSAR_TENANT"
+          value: {{ ((.Values.global.di).pulsar).tenant | default "public" }}
+        - name: "PULSAR_NAMESPACE"
+          value: {{ ((.Values.global.di).pulsar).namespace | default "default" }}
+        - name: "PULSAR_AIOPS_BACKLOG_QUOTA_MB"
+          value: "{{ .Values.deployment.pulsar.aiops.backlogQuotaMB }}"
+        - name: PULSAR_AIOPS_PUBLISH_RATE_KB
+          value: "{{ .Values.deployment.pulsar.aiops.publishRateKB }}"
+        - name: PULSAR_PARTITIONS
+          valueFrom:
+            configMapKeyRef:
+              name: itom-di-administration-cm
+              key: admin.topic.partition.count
+              optional: true
+        {{ include "aec.setExternalPulsarCertEnv" . | indent 8 }}
+        volumeMounts:
+        {{- if (hasKey .Values.global "tlsTruststore") }}
+        - name: {{ .Values.externalCerts.volumeName }}
+          mountPath: /service/conf/additionalCAs
+          readOnly: true
+        {{- end }}
+        {{ include "aec.useExternalPulsarCertVolume" . | indent 8 }}
+        - name: vault-token
+          mountPath: /var/run/secrets/boostport.com
+        - name: {{ .Values.cacerts.volumeName }}
+          mountPath: {{ .Values.cacerts.folder }}
+        - name: log-storage
+          mountPath: /service/log
+          subPath: itom-analytics/aec-init-job
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "0.1"
+          limits:
+            memory: "256Mi"
+            cpu: "0.5"
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+      restartPolicy: OnFailure
+      {{- with ( coalesce .Values.nodeSelector .Values.global.nodeSelector ) }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+      {{ include "aec.externalCertsVolume" . | indent 6 }}
+      {{ include "aec.defineExternalPulsarCertVolume" . | indent 6 }}
+      - name: vault-token
+        emptyDir: {}
+      - name: {{ .Values.cacerts.volumeName }}
+        emptyDir: {}
+      - name: log-storage
+      {{- include "helm-lib.pvcStorage" (dict "claim" "logVolumeClaim" "Release" .Release "Template" .Template "Values" .Values ) | nindent 8 }}

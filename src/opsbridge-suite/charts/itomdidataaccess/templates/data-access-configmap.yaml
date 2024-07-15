@@ -1,0 +1,60 @@
+{{/* # */}}
+{{/* # Copyright 2023 Open Text. */}}
+{{/* # */}}
+{{/* # The only warranties for products and services of Open Text and its affiliates and  */}}
+{{/* # licensors (“Open Text”) are as may be set forth in the express warranty statements  */}}
+{{/* # accompanying such products and services. Nothing herein should be construed as */}}
+{{/* # constituting an additional warranty. Open Text shall not be liable for technical or */}}
+{{/* # editorial errors or omissions contained herein. The information contained herein is  */}}
+{{/* # subject to change without notice. */}}
+{{/* # */}}
+{{/* # Except as specifically indicated otherwise, this document contains confidential  */}}
+{{/* # information and a valid license is required for possession, use or copying. If this work  */}}
+{{/* # is provided to the U.S. Government, consistent with FAR 12.211 and 12.212, Commercial Computer  */}}
+{{/* # Software, Computer Software Documentation, and Technical Data for Commercial Items are licensed to */}}
+{{/* # the U.S. Government under vendor’s standard commercial license. */}}
+{{/* # */}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: itom-di-data-access-cm
+data:
+  dataaccess.jvm.args: {{ .Values.didataaccess.config.dataaccess.jvmArgs | quote }}
+  vertica.ingestion.service.name: {{ .Values.didataaccess.config.vertica.ingestionServiceName | quote }}
+  vertica.ingestion.service.port: {{ .Values.didataaccess.config.vertica.ingestionServicePort | quote }}
+  vertica.datasource.driver-class-name: {{ .Values.didataaccess.config.vertica.datasourceDriverClassName }}
+  vertica.datasource.username: {{ template "vertica.rouser" .}}
+  vertica.datasource.connection-timeout: {{ .Values.didataaccess.config.vertica.datasourceConnectionTimeout | quote }}
+  dataaccess.resource-pool: {{ .Values.global.di.dataaccess.resourcepool | quote }}
+  vertica.datasource.hostname: {{ template "vertica.host" .}}
+  vertica.datasource.port: {{ template "vertica.port" .}}
+  vertica.datasource.databasename: {{ template "vertica.db" .}}
+  vertica.connection.max-reconnect-attempt-on-failure-during-startup: {{ .Values.didataaccess.config.vertica.connection.maxReconnectAttemptOnFailureDuringStartup | quote }}
+  vertica.connection.time-delay-between-retries-during-startup: {{ .Values.didataaccess.config.vertica.connection.timeDelayBetweenRetriesDuringStartup | quote }}
+  dataaccess.client.auth.enable: {{ .Values.didataaccess.config.dataaccess.clientAuthEnable | quote }}
+  dataaccess.use.external.ca.signed.certs: {{ .Values.didataaccess.config.dataaccess.useExternalCASignedCerts | quote }}
+  dataaccess.enable.security.audit: {{ .Values.didataaccess.config.dataaccess.enableSecurityAudit | quote }}
+  vertica.datasource.password.key: {{ .Values.global.vertica.rouserkey | quote}}
+  dataaccess.vertica.ingestion.tls.enable: {{ .Values.didataaccess.config.dataaccess.verticaIngestionTlsEnable | quote }}
+  dataaccess.vertica.ssl.enable: {{ .Values.global.vertica.tlsEnabled | quote }}
+  hikaricp.connection.maximum.lifetime: {{ .Values.didataaccess.config.hikaricp.connectionMaximumLifetime | quote }}
+  hikaricp.minimum.idle.connections: {{ .Values.didataaccess.config.hikaricp.minimumIdleConnections | quote }}
+  hikaricp.idle.session.timeout: {{ .Values.didataaccess.config.hikaricp.idleSessionTimeOut | default "3600s" | quote }}
+  hikaricp.maximum.pool.size: {{ .Values.didataaccess.config.hikaricp.maximumPoolSize | quote }}
+  hikaricp.connection.pool.name: {{ .Values.didataaccess.config.hikaricp.connectionPoolName | quote }}
+  timezone: {{ .Values.didataaccess.config.timezone | quote }}
+
+  dataaccess.logconfig.from.configmap: {{ .Values.didataaccess.config.dataaccess.logConfigFromConfigmap | quote }}
+  dataaccess.system.level.throttle: {{ .Values.didataaccess.config.dataaccess.systemLevelThrottle | quote }}
+  dataaccess.permissible.request.limit: {{ .Values.didataaccess.config.dataaccess.permissibleRequestLimit | quote }}
+  dataaccess.request.throttle.time: {{ .Values.didataaccess.config.dataaccess.requestThrottleTime | quote }}
+  dataaccess.throttle.cache.size: {{ .Values.didataaccess.config.dataaccess.cacheSize | quote }}
+  dataaccess.throttle.expire.afteraccess.time: {{ .Values.didataaccess.config.dataaccess.throttleExpireTime | quote }}
+  dataaccess.java.tls.ciphers.recommended: {{ .Values.global.di.java.tls.ciphers.recommended | quote }}
+  dataaccess.java.tls.ciphers.optional: {{ .Values.global.di.java.tls.ciphers.optional | quote }}
+  dataaccess.java.tls.ciphers.useJDKDefault: {{ .Values.global.di.java.tls.ciphers.useJDKDefault | quote }}
+
+  dataaccess.security.authorizedRoles: {{ .Values.didataaccess.idm.authorizedRoles | quote }}
+  dataaccess.security.tokenCache.expiryTimeSeconds: {{ .Values.didataaccess.idm.tokenCacheExpiryTimeSeconds | quote }}
+  dataaccess.security.idm.service.url: {{ .Values.global.idm.idmServiceUrl | quote }}
+  dataaccess.server.tls.enabled.protocols: {{ .Values.didataaccess.config.dataaccess.serverTlsEnabledProtocols | default "TLSv1.2,TLSv1.3" | quote }}

@@ -1,0 +1,27 @@
+displayName: Operations Bridge (OpsBridge)
+displayEdition: opsb.appinfo.displayEdition
+
+shortDescription: opsb.appinfo.shortDescription
+
+description: opsb.appinfo.description
+
+whatsNew: opsb.appinfo.whatsNew
+
+requirements: opsb.appinfo.requirements
+
+documentationUrl: "https://docs.microfocus.com/itom/Containerized_Operations_Bridge:24.2/Home"
+entitlementsUrl: "https://softwaresupport.softwaregrp.com/group/softwaresupport/settings"
+productBriefUrl: "https://docs.microfocus.com/itom/ITOM:Operations_Bridge/Home"
+supportUrl: "https://softwaresupport.softwaregrp.com/"
+communityUrl: "https://community.microfocus.com/it_ops_mgt/ops_bdg/"
+
+screenshotImage: images/AppHub_Cards_OpsB.png
+
+# These "family" items are required to be "IT Operations Management"
+familyName: IT Operations Management
+providerIcon: images/opsbridge-icon.png
+
+moreUrl: null
+allowCustomSelection: true
+supportedRollback: 2022.05.*
+

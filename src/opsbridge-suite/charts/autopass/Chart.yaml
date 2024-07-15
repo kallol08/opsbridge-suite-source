@@ -1,0 +1,11 @@
+apiVersion: v1
+appVersion: 24.2_P-2024050922
+description: Micro Focus AutoPass Licensing Server
+keywords:
+- licensing
+- autopass
+maintainers:
+- email: MFI-swpdl.apls_core@opentext.com
+  name: Autopass
+name: autopass
+version: 24.2.5

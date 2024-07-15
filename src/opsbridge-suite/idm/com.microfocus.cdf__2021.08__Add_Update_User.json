@@ -1,0 +1,61 @@
+[{
+    "operation": "ADD_OR_UPDATE",
+    "type": "role",
+    "names": {
+      "organizationName": "Provider"
+    },
+    "attributes": {
+      "name": "monitoringServiceAdminRole",
+      "displayName": "Monitoring Service Admin",
+      "description": "Monitoring service admin role"
+    }
+  }, {
+    "operation": "ADD_OR_UPDATE",
+    "type": "role",
+    "names": {
+      "organizationName": "Provider"
+    },
+    "attributes": {
+      "name": "monitoringServiceSecurityUserRole",
+      "displayName": "Monitoring Service Security",
+      "description": "Monitoring service security role"
+    }
+  }, {
+    "operation": "ADD_OR_UPDATE",
+    "type": "role",
+    "names": {
+      "organizationName": "Provider"
+    },
+    "attributes": {
+      "name": "monitoringServiceUserRole",
+      "displayName": "Monitoring Service User",
+      "description": "Monitoring service user role"
+    }
+  }, {
+    "operation": "ADD_OR_UPDATE",
+    "type": "AbstractGroup",
+    "names": {
+      "organizationName": "Provider"
+    },
+    "attributes": {
+      "name": "Administrators",
+      "displayName": "Administrators",
+      "groupInfo": "Administrators group",
+      "description": "Administrators group"
+    },
+    "associations": [{
+        "name": "idmAdminRole",
+        "type": "role"
+      }, {
+        "name": "mngAdminRole",
+        "type": "role"
+      }, {
+        "name": "bvd_admin",
+        "type": "role"
+      }, {
+        "name": "monitoringServiceAdminRole",
+        "type": "role"
+      }
+    ]
+  }
+]

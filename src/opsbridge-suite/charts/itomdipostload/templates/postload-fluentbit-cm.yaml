@@ -1,0 +1,122 @@
+{{/* # */}}
+{{/* # Copyright 2023 Open Text. */}}
+{{/* # */}}
+{{/* # The only warranties for products and services of Open Text and its affiliates and  */}}
+{{/* # licensors (“Open Text”) are as may be set forth in the express warranty statements  */}}
+{{/* # accompanying such products and services. Nothing herein should be construed as */}}
+{{/* # constituting an additional warranty. Open Text shall not be liable for technical or */}}
+{{/* # editorial errors or omissions contained herein. The information contained herein is  */}}
+{{/* # subject to change without notice. */}}
+{{/* # */}}
+{{/* # Except as specifically indicated otherwise, this document contains confidential  */}}
+{{/* # information and a valid license is required for possession, use or copying. If this work  */}}
+{{/* # is provided to the U.S. Government, consistent with FAR 12.211 and 12.212, Commercial Computer  */}}
+{{/* # Software, Computer Software Documentation, and Technical Data for Commercial Items are licensed to */}}
+{{/* # the U.S. Government under vendor’s standard commercial license. */}}
+{{/* # */}}
+{{- $enableDebug := .Values.enableStdOutInFluentBit -}}
+{{- $prefix := "di-postload" }}
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $prefix }}-fluentbit
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{ .Values.global.fluentbit.fluentbitSelector.labelName }}: {{ .Values.global.fluentbit.fluentbitSelector.labelValue | quote }}
+
+data:
+  {{ $prefix }}-parsers.conf: |-
+    [PARSER]
+        Name        odl-postload-tc
+        Format      regex
+        Regex       /^(?<time>\d+\-\d+\-\d+(\s+)\d+\:\d+\:\d+\.\d+)(\s+)(?<level>[A-Z]+)(\s+)(?<message>.+)$/gm
+        Time_Key    time
+        Time_Format %Y-%m-%d %H:%M:%S.%L
+    [PARSER]
+        Name        odl-postload-te
+        Format      regex
+        Regex       /^(?<time>\d+\-\d+\-\d+(\s+)\d+\:\d+\:\d+\.\d+)(\s+)(\[[a-z-\d+]+\])(\s+)(?<level>[A-Z]+)(\s+)(?<message>.+)$/gm
+        Time_Key    time
+        Time_Format %Y-%m-%d %H:%M:%S.%L
+
+    [PARSER]
+        Name        odl-postload-shutdown
+        Format      regex
+        Regex       /(^Shutting Down)(\s+)(Waiting.*)/
+        Time_Key    time
+        Time_Format %Y-%m-%d %H:%M:%S
+
+  {{ $prefix }}-input.conf: |-
+    [INPUT]
+        Name              tail
+        Tag               odlpostload.*
+        Path              /fluentbit/deployment-log/di/taskcontroller/__*postload-taskcontroller*/taskcontroller.log
+        Multiline         On
+        Buffer_Chunk_Size 64KB
+        Buffer_Max_Size   128KB
+        Parser_FirstLine  odl-postload-tc
+
+    [INPUT]
+        Name              tail
+        Tag               odlpostload-tc-shutdown.*
+        Path              /fluentbit/deployment-log/di/taskcontroller/__*postload-taskcontroller*/shutdown.log
+        Multiline         On
+        Buffer_Chunk_Size 64KB
+        Buffer_Max_Size   128KB
+        Parser_FirstLine  odl-postload-shutdown
+
+    [INPUT]
+        Name              tail
+        Tag               odlpostload.*
+        Path              /fluentbit/deployment-log/di/taskexecutor/__*postload-taskexecutor*/taskexecutor.log
+        Multiline         On
+        Buffer_Chunk_Size 64KB
+        Buffer_Max_Size   128KB
+        Parser_FirstLine  odl-postload-te
+
+    [INPUT]
+        Name              tail
+        Tag               odlpostload-te-shutdown.*
+        Path              /fluentbit/deployment-log/di/taskexecutor/__*postload-taskexecutor*/shutdown.log
+        Multiline         On
+        Buffer_Chunk_Size 64KB
+        Buffer_Max_Size   128KB
+        Parser_FirstLine  odl-postload-shutdown
+
+    [INPUT]
+        Name              tail
+        Tag               odlpostload.*
+        Path              /fluentbit/deployment-log/di/taskexecutor/__*postload-taskexecutor*/perl-task.log
+        Multiline         On
+        Buffer_Chunk_Size 64KB
+        Buffer_Max_Size   128KB
+        Parser_FirstLine  odl-postload-te
+
+    [INPUT]
+        Name              tail
+        Tag               odlpostload.*
+        Path              /fluentbit/deployment-log/di/taskexecutor/__*postload-taskexecutor*/forecast.log
+        Multiline         On
+        Buffer_Chunk_Size 64KB
+        Buffer_Max_Size   128KB
+        Parser_FirstLine  odl-postload-te
+
+    [INPUT]
+        Name              tail
+        Tag               odlpostload.*
+        Path              /fluentbit/deployment-log/di/taskexecutor/__*postload-taskexecutor*/aggregate.log
+        Multiline         On
+        Buffer_Chunk_Size 64KB
+        Buffer_Max_Size   128KB
+        Parser_FirstLine  odl-postload-te
+    [FILTER]
+        Name       grep
+        Match      odlpostload.*
+        Regex      log /WARN|ERROR|FATAL/        
+
+  {{- if $enableDebug }}
+    [OUTPUT]
+        Name          stdout
+        Match         odlpostload*        
+  {{- end }} 

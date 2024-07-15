@@ -1,0 +1,31 @@
+{{/*# Copyright 2023 Open Text.*/}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: itom-zookeeper-svc
+  labels:
+    app.kubernetes.io/name: itom-zookeeper-svc
+    name: itom-zookeeper
+spec:
+  ports:
+  - port: 2888
+    name: server
+  - port: 3888
+    name: leader-election
+  clusterIP: None
+  selector:
+    name: itom-zookeeper
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: itom-zookeeper-client-svc
+  labels:
+    app.kubernetes.io/name: itom-zookeeper-client-svc
+    name: itom-zookeeper
+spec:
+  ports:
+    - port: 2281
+      name: client-tls
+  selector:
+    name: itom-zookeeper

@@ -1,0 +1,38 @@
+kind: ConfigMap
+metadata:
+  name: opsb-uis-helpabout
+  labels:
+    deployment.microfocus.com/uif-content: "true"
+apiVersion: v1
+data:
+  helpabout.json: |+
+    {
+      "name": "Operations Bridge",
+      "id": "OpsBridge",
+      "version": "2024.2",
+      "requires": [],
+      "content": {
+        "appcfg": [
+          {
+            "app": {
+              "id": "OpsBridge",
+              "title": "OpsBridge",
+              "helpUrl": "https://software.microfocus.com/en-us/products/operations-bridge-suite/overview"
+            },
+            "context": [],
+            "about": {
+              "title": "Operations Bridge",
+              "description": "Operations Bridge automatically monitors and analyzes the health and performance of multi-cloud and on-premises resources for any device, operating system, database, application, or service across all data type",
+              "icon": "data:image/svg+xml;base64,PHN2ZyBpZD0iTGF5ZXJfMSIgZGF0YS1uYW1lPSJMYXllciAxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMiIgaGVpZ2h0PSIzMiIgdmlld0JveD0iMCAwIDMyIDMyIj48dGl0bGU+b3BzYnJpZGdlLWludmVyc2UtLTMyPC90aXRsZT48cGF0aCBkPSJNMjYsMTVINnYyaC40N0EyNiwyNiwwLDAsMSwxMSwzMXYxaDJWMzFBMjguMzIsMjguMzIsMCwwLDAsOC44OCwxN0gyMy4xNEEzMS42OSwzMS42OSwwLDAsMCwxOSwzMXYxaDJWMzFhMjkuMzEsMjkuMzEsMCwwLDEsNC41Mi0xNEgyNloiIGZpbGw9IiNmZmYiLz48cmVjdCB4PSIxNSIgd2lkdGg9IjIiIGhlaWdodD0iNCIgZmlsbD0iI2ZmZiIvPjxyZWN0IHg9IjEyIiB5PSI1IiB3aWR0aD0iOCIgaGVpZ2h0PSIyIiBmaWxsPSIjZmZmIi8+PHBvbHlnb24gcG9pbnRzPSIxMS43MiAxNCAxMC4zOSAxMCAyMS42MSAxMCAyMC4yOCAxNCAyMi4zOSAxNCAyNC4zOSA4IDcuNjEgOCA5LjYxIDE0IDExLjcyIDE0IiBmaWxsPSIjZmZmIi8+PC9zdmc+",
+              "capabilities": [],
+              "details": "### Containerized Operations Bridge Manager\n\nOBM is also available as a container for Helm based deployment. OBM combines events from application management components with events from the system and network products. This enables you to keep track of all the events that occur in your monitored environment. Watch the video below to see how OBM, as part of the Operations Bridge, helps you see all your data through a single pane of glass\n\n### Stakeholder Dashboards \nThe stakeholder dashboard gives you visual information of live data using tables, charts, and widgets. You can stream real-time data from any data source in JSON format via HTTP post. Stakeholder Dashboards can integrate with a variety of data sources and enable you to represent data in several valuable perspectives. You can create custom dashboards, near real-time dashboards, receive real-time updates, and access information from any device with a browser.\n\n### OPTIC Reporting \nThe OPTIC Reporting capability provides you with all the artifacts required for IT infrastructure and event management. It consists of three components - Operations Bridge Reporting content, BVD (Reporting capability of BVD), and OPTIC Data Lake. It consolidates performance metrics, event metrics, and response time data into tables, graphs, and dashboards and enables you to visualize and analyze your IT environment.\n\n### Automatic Event Correlation\nThe Automatic Event Correlation capability provides you with all the artifacts required for event management, event consolidation, and noise reduction. This capability consists of OPTIC Data Lake.\n\nAutomatic Event Correlation offers the facility to automatically correlate events coming from OBM, by analyzing patterns. This automatic event correlation (AEC) uses a machine learning algorithm to group related events into a single event and sends the correlated event back to OBM. Thus, as an operator viewing the event console in OBM, you will be able to identify key events that can solve many underlying events.\n\n### Hyperscale Observability \n\nHyperscale Observability capability provides you with scalable monitoring of your AWS, Azure, and Kubernetes resources. It brings with it the dynamic detection of new resources as they get added to your AWS, Azure, or Kubernetes subscription. \n\n### Application Monitoring\n\nApplication Monitoring capability provides a simplified and standard HTML based UI where Application Performance Management (APM) users can configure the Business Process Management (BPM) applications and manage scripts in the Files repository.\n\n### Agentless Monitoring\n\nAgentless Monitoring allows you to get an overview of the health, availability, and performance of hybrid set of systems and applications deployed on-premise and cloud in your infrastructure monitored by SiteScope.\n\n### Anomaly Detection\n\nAnomaly Detection is a technology preview capability. Enable this capability only if OBA is going to be installed and integrated with OPTIC DL to try a technology preview of the new Anomaly Detection Configurator and OPTIC DL Source Configurator user experience interfaces.\n\n ### Disclaimer\n\nCertain versions of software accessible here may contain branding from Hewlett-Packard Company (now HP Inc.) and Hewlett Packard Enterprise Company. This software was acquired on September 1, 2017 by Micro Focus and is now offered by OpenText, a separately owned and operated company. Any reference to the HP and Hewlett Packard Enterprise/HPE marks is historical in nature, and the HP and Hewlett Packard Enterprise/HPE marks are the property of their respective owners.",
+              "release": "CE {{.Values.global.applicationVersion}}",
+              "copyright": {
+                "fromYear": "2022",
+                "toYear": "2024"
+              }
+            }
+          }
+        ]
+      }
+    }

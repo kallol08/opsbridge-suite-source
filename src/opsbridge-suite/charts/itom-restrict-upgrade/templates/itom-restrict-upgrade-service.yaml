@@ -1,0 +1,20 @@
+{{- if  eq (include "restrict.isClient" .) "false" }}
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app.kubernetes.io/name: itom-restrict-upgrade-svc
+    app.kubernetes.io/managed-by: {{.Release.Name}}
+    app.kubernetes.io/version: {{.Values.restrictUpgrade.imageTag }}
+    itom.microfocus.com/capability: opsbridge-suite
+    tier.itom.microfocus.com/backend: backend
+  name: itom-restrict-upgrade-svc
+spec:
+  selector:
+    app: itom-restrict-upgrade
+  ports:
+    - protocol: TCP
+      port: 8443
+      targetPort: 8443
+
+{{- end}}

@@ -1,0 +1,180 @@
+# Copyright 2023 Open Text.
+
+# The only warranties for products and services of Open Text and its affiliates
+# and licensors ("Open Text") are as may be set forth in the express warranty
+# statements accompanying such products and services. Nothing herein should be
+# construed as constituting an additional warranty. Open Text shall not be
+# liable for technical or editorial errors or omissions contained herein. The
+# information contained herein is subject to change without notice.
+
+itommonitoringsnf:
+  image: "itom-monitoring-store-and-forward"
+  imageTag: 24.2-63
+  capname: itom-monitoring-snf
+  config:
+    dbstorageallocated: "5Gi"
+    replicaCount: 1
+    serviceJvmArgs: "-Xmx1024m -XX:+HeapDumpOnOutOfMemoryError"
+    permissibleRequestLimit: "6000"
+    defaultTimeout: "30"
+    defaultInputLen: "100"
+    defaultMaxRows: "240000"
+    defaultFetchRowLimit: "200"
+    diReceiverSvc: itom-di-receiver-svc
+    diReceiverPort: 5050
+    desreceiversvc: itom-opsbridge-des-svc
+    desreceiverport: 40009
+    resurrectionDelayInSeconds: 300
+redis:
+  svcname: cs-redis
+  port: 6380
+  srvbasename: cs-redis
+  passwdkey: redis_pwd
+
+deployment:
+  rbac:
+    serviceAccount: itom-monitoring-snf-sa
+  database:
+    userPasswordKey: MA_DB_USER_PASSWORD_KEY
+    user: monitoringsnfuser
+    dbName: monitoringsnfdb
+    oracleWalletName:
+    # SSL Client Authentication
+    sslClientAuthentication: true
+    # SSL Server DN Match
+    sslServerDnMatch: "off"
+  resources:
+    limits:
+      cpu: "1"
+      memory: "2048Mi"
+    requests:
+      cpu: "0.2"
+      memory: "256Mi"
+
+global:
+  desProtocol:
+  opsBridge:
+    externalAccessHost: 
+    externalAccessPort: 
+    desExternalPort:
+    proxy:
+      host:
+      port:
+      user:
+      password: 
+      no_proxy: 
+  services:
+    opticReporting:
+      #deploy: true
+    opticDataLake:
+      #deploy: true                            # Uncomment the parameter when using Shared Optic Data Lake while installing HyperscaleObservability or AutomaticEventCorrelation or OpticReporting capabilities
+      externalOpticDataLake:
+        externalAccessHost:                     # External Access Host of the providing deployment
+        externalAccessPort:                     # Ingress Controller Port
+        integrationUser:                        # IDM Integration User of the providing deployment
+        integrationPasswordKey:  # [DO NOT CHANGE] IDM Integration User password of the providing deployment
+        # User must use one of the below connection mechanisms if using Shared Optic Data Lake
+        connectUsingNamespace: # Connect using cross-namespace communication
+          namespace:                            # Namespace of the providing deployment
+        connectUsingExternalAccessHost: # Connect using External Access Host
+          diReceiverPort:                       # (External Host) Port of OPTIC Data Lake Ingestion Service
+          diAdminPort:                          # (External Host) Port of OPTIC Data Lake Administration Service
+          diDataAccessPort:                     # (External Host) Port of OPTIC Data Lake Data Access Service
+          diPulsarSslPort:                      # (External Host) Port of OPTIC Data Lake Pulsar SSL service
+          diPulsarWebPort:                      # (External Host) Port of OPTIC Data Lake Pulsar Web service  
+  externalAccessHost:
+  busybox:
+    image: itom-busybox
+    imageTag: 1.32.0-006
+  toolsBase:
+    image: itom-tools-base
+    imageTag: 1.1.0-0011
+  rbac:
+    serviceAccountCreate: true
+    roleCreate: true
+  nodeSelector: {}
+  persistence:
+    enabled: false
+    configVolumeClaim:
+    logVolumeClaim:
+  suiteLabel: Worker
+  suiteLabelValue: label
+  cluster:
+    k8sProvider: "" 
+  setFqdnInIngress: false
+  diProtocol:
+  diHostname:
+  diReceiverPort:  
+
+
+  # If isDemo is true, this will allow use of ephemeral storage and other POC aspects.
+  isDemo: false
+  docker:
+    # set the global.docker.registry and orgName to your internal Docker registry/org
+    registry: localhost:5000
+    orgName: hpeswitom
+    imagePullSecret: ""    
+    imagePullPolicy: IfNotPresent
+
+  securityContext:
+    user: "1999"
+    fsGroup: "1999"
+  vault:
+    realmList: "RE:365"
+
+  # Global image references for vault
+  vaultRenew:
+    image: kubernetes-vault-renew
+    imageTag: 0.8.0-004
+  vaultInit:
+    image: kubernetes-vault-init
+    imageTag: 0.8.0-004
+
+  prometheus:
+    deployPrometheusConfig: true      #true = deploy scraping rules (ServiceMonitor, PodMonitor) and alerts (PrometheusRule)
+    deployGrafanaConfig: true         #true = deploy configmaps defining the Grafana dashboards
+    prometheusSelector:               #define the label(s) that Prometheus looks for when discovering rules.
+      prometheus_config: "1"
+    grafanaSelector:                  #define the label(s) that Grafana looks for when discovering dashboards.
+      grafana_dashboard: "1"
+
+  idm:
+    integrationUser:
+    integrationUserKey:
+    adminUser:
+    adminKey:
+    transportUser:
+    transportUserKey:    
+    
+  database:
+    #Whether Embedded DB[postgres] should be used
+    internal: true
+    #Internal database connection details.
+    internalDatabaseDetails:
+      host: 
+      port:
+      name: 
+      user: 
+      schema: 
+    # db engine type: postgresql or oracle (not supported by Config Manager Service). default: postgresql
+    # Used by IDM and BVD
+    type: postgresql
+    #Database JDBC-formatted URL, Once set, host/port/type/sid/ServiceName/connectionString will be ignored. with this, we can support more database and connection style
+    # DB host #USED by IDM and BVD
+    host: 
+    # DB port #USED by IDM and BVD
+    port: 
+    # Database name for Postgres # #USED by IDM and BVD
+    name:
+    # Database user for Postgres
+    user:
+    # Database schema name for Postgres
+    schema:
+    # true when TLS is enabled # USED by IDM and BVD
+    tlsEnabled: true
+    # TLS cert # Used by BVD
+    tlsCert:
+    # SSL Client Authentication
+    sslClientAuthentication:
+    # SSL Server DN Match
+    sslServerDnMatch:

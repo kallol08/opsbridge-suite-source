@@ -1,0 +1,168 @@
+{{- /* Copyright 2020-2023 Open Text */ -}}
+
+{{- if .Values.scriptingHost.enabled }}
+{{- $name := print .Values.deployment.name "-scripting-host" -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    deployment.microfocus.com/default-replica-count: "1"
+    deployment.microfocus.com/runlevel: STANDBY
+  name: "{{ $name }}"
+  namespace: {{ .Release.Namespace }}
+  labels:
+{{ include "obm.scripting-host.labels" (dict "name" $name "Release" .Release "Chart" .Chart "Values" .Values) | indent 4 }}
+spec:
+  replicas: 1
+  revisionHistoryLimit: 0
+  selector:
+    matchLabels:
+      app: "{{ $name }}"
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+{{ include "obm.scripting-host.labels" (dict "name" $name "Release" .Release "Chart" .Chart "Values" .Values) | indent 8 }}
+    spec:
+      serviceAccount: {{ .Values.scriptingHost.rbac.serviceAccount | default $name }}
+      serviceAccountName: {{ .Values.scriptingHost.rbac.serviceAccount | default $name }}
+      automountServiceAccountToken: false
+{{- if .Values.global.docker.imagePullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.global.docker.imagePullSecret }}
+{{- end }}
+      securityContext:
+        runAsUser: {{ .Values.global.securityContext.user | int64 }}
+        runAsGroup: {{ .Values.global.securityContext.fsGroup | int64 }}
+        fsGroup: {{ .Values.global.securityContext.fsGroup | int64 }}
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      nodeSelector:
+        {{- toYaml (.Values.scriptingHost.nodeSelector | default .Values.global.nodeSelector) | nindent 8 }}
+      containers:
+      - name: "{{ $name }}"
+        image: {{ .Values.scriptingHost.image | default (printf "%s/%s/%s:%s" .Values.global.docker.registry .Values.global.docker.orgName .Values.scriptingHost.imageName .Values.scriptingHost.imageTag) }}
+        imagePullPolicy: {{ .Values.scriptingHost.imagePullPolicy | default .Values.global.docker.imagePullPolicy }}
+        readinessProbe:
+          tcpSocket:
+            port: 21313
+          initialDelaySeconds: 2
+          periodSeconds: 3
+        resources:
+{{- $sizes := get .Values.deployment.scriptingHostSizes (upper .Values.deployment.size) }}
+          requests:
+            ephemeral-storage: {{ $sizes.minEphemeralStorage }}
+            memory: {{ $sizes.minMemory }}
+            cpu: {{ $sizes.minCpu }}
+          limits:
+            ephemeral-storage: {{ $sizes.maxEphemeralStorage }}
+            memory: {{ $sizes.maxMemory }}
+            cpu: {{ $sizes.maxCpu }}
+        ports:
+          - name: rmi-registry
+            containerPort: 21303
+          - name: rmi-service
+            containerPort: 21313
+          - name: metrics
+            containerPort: 30022
+{{- if .Values.scriptingHost.devMode }}
+          - name: debug
+            containerPort: 2233
+{{- end }}
+        securityContext:
+          capabilities:
+            drop:
+            - ALL
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: {{ not .Values.scriptingHost.devMode }}
+        env:
+        - name: "NAMESPACE"
+          value: {{ .Release.Namespace }}
+        - name: "OPR_BUS_HOST"
+          value: "{{ .Values.global.evtsvc.namePrefix }}-artemis"
+        - name: "OBM_HOST"
+          value: {{ .Values.deployment.name }}
+        - name: "ORGANIZATION"
+          value: {{ .Values.global.idm.tenant | default "Provider" }}
+    {{- if .Values.global.idm.orgAware }}
+        - name: "TARGET_ORGANIZATION"
+          value: {{ .Values.global.idm.additionalSeededOrg.name }}
+    {{- end }}
+        - name: "SCRIPTING_HOST_USER"
+          value: "obm-scripting-host-integration"
+        - name: "SERVICE_RESERVED"
+          value: {{ include "obm.siToBytes" .Values.deployment.scriptingHostSizes.reserved | default "" | quote }}
+        - name: "CONTAINER_NAME"
+          value: "{{ $name }}"
+        - name: "POD_NAMESPACE"
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: "POD_NAME"
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: "FIPS_ENABLED"
+          value: {{ .Values.global.fipsMode | quote }}
+{{- if .Values.scriptingHost.devMode }}
+        - name: "DEV_MODE"
+          value: "true"
+        - name: "ENABLE_REMOTE_DEBUG"
+          value: "true"
+{{- end }}
+        volumeMounts:
+        - name: tmp-volume
+          mountPath: /tmp
+        - name: boostport-volume
+          mountPath: /run/secrets/boostport.com
+        - name: scripting-host-cert
+          mountPath: /scripting-host-cert
+        - name: scripting-host-credentials
+          mountPath: /scripting-host-credentials
+        - name: scripting-host-metrics-credentials
+          mountPath: /scripting-host-metrics-credentials
+        - name: public-ca-certificates
+          mountPath: /public-ca-certificates
+        - name: conf-storage
+          mountPath: /service/conf
+          subPath: "{{ $name }}/conf"
+        - name: log-storage
+          mountPath: /service/log
+          subPath: "{{ $name }}/log"
+      volumes:
+      - name: tmp-volume
+        emptyDir: {}
+      - name: boostport-volume
+        emptyDir: {}
+      - name: scripting-host-cert
+        secret:
+          defaultMode: 0400
+          secretName: {{ .Values.deployment.name }}-scripting-host-certificate
+      - name: scripting-host-credentials
+        secret:
+          defaultMode: 0400
+          secretName: {{ .Values.global.initSecrets }}
+          items:
+            - key: obm_scripting_host_integration_password
+              path: password
+      - name: scripting-host-metrics-credentials
+        secret:
+          defaultMode: 0400
+          secretName: {{ .Values.deployment.name }}-scripting-host-metrics-credentials
+          items:
+            - key: password
+              path: password
+      - name: public-ca-certificates
+        configMap:
+          defaultMode: 0444
+          name: public-ca-certificates
+      - name: conf-storage
+        {{- include "helm-lib.pvcStorage" (dict "claim" "configVolumeClaim" "Release" .Release "Template" .Template "Values" .Values) | nindent 8 }}
+      - name: log-storage
+        {{- include "helm-lib.pvcStorage" (dict "claim" "logVolumeClaim" "Release" .Release "Template" .Template "Values" .Values ) | nindent 8 }}
+{{- end }}

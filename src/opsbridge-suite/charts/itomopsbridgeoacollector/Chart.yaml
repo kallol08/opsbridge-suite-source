@@ -1,0 +1,9 @@
+apiVersion: v2
+appVersion: 24.2.1-4
+dependencies:
+- name: helm-lib
+  repository: https://orgartifactory.swinfra.net/artifactory/itom-helm-charts-stable
+  version: 1.9.0-9
+description: OpenText ITOM OpsBridge Agent Metric Collector
+name: itomopsbridgeoacollector
+version: 3.3.1-2

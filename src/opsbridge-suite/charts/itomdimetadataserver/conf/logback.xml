@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ~ Copyright 2023 Open Text.
+  ~
+  ~ The only warranties for products and services of Open Text and its affiliates and licensors ("Open Text")
+  ~ are as may be set forth in the express warranty statements accompanying such products and services.
+  ~ Nothing herein should be construed as constituting an additional warranty. Open Text shall not be liable
+  ~ for technical or editorial errors or omissions contained herein. The information contained herein is subject to change without notice.
+  ~
+  ~ Except as specifically indicated otherwise, this document contains confidential information and a valid
+  ~ license is required for possession, use or copying. If this work is provided to the U.S. Government,
+  ~ consistent with FAR 12.211 and 12.212, Commercial Computer Software, Computer Software
+  ~ Documentation, and Technical Data for Commercial Items are licensed to the U.S. Government under
+  ~ vendor's standard commercial license.
+  -->
+
+<!-- Logback Version : 99 -->
+<configuration scan="true" scanPeriod="30 seconds">
+
+    <property name="FILE_LOG_PATTERN" value="%d{yyyy-MM-dd HH:mm:ss.SSS} %5p ${PID:- } [%t] - %logger{0} %X{Context}: %m%n"/>
+    {{- if (eq (.Values.global.di.logging.useFile  | toString) "false") }}
+    <appender name="ConsoleAppender" class="ch.qos.logback.core.ConsoleAppender">
+        <Target>System.out</Target>
+        <encoder>
+            <pattern>${FILE_LOG_PATTERN}</pattern>
+        </encoder>
+    </appender>
+
+    <logger name="com.itom.di" level="INFO" additivity="false">
+        <appender-ref ref="ConsoleAppender"/>
+    </logger>
+
+    <logger name="com.swgrp.itomdi.configuration.client" level="INFO" additivity="false">
+        <appender-ref ref="ConsoleAppender"/>
+    </logger>
+
+    <root level="WARN">
+        <appender-ref ref="ConsoleAppender"/>
+    </root>
+    {{- else }}
+    <appender name="LogFileAppender" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <!--See also http://logback.qos.ch/manual/appenders.html#RollingFileAppender-->
+        <Append>true</Append>
+        <File>${LOG_PATH}/metadata-server-app.log</File>
+        <encoder>
+            <pattern>${FILE_LOG_PATTERN}</pattern>
+        </encoder>
+        <rollingPolicy class="ch.qos.logback.core.rolling.FixedWindowRollingPolicy">
+            <maxIndex>5</maxIndex>
+            <FileNamePattern>${LOG_PATH}/archive/metadata-server-app.%i.log</FileNamePattern>
+        </rollingPolicy>
+        <triggeringPolicy class="ch.qos.logback.core.rolling.SizeBasedTriggeringPolicy">
+            <MaxFileSize>5MB</MaxFileSize>
+        </triggeringPolicy>
+    </appender>
+
+    <logger name="com.itom.di" level="INFO" additivity="false">
+        <appender-ref ref="LogFileAppender"/>
+    </logger>
+
+    <logger name="com.swgrp.itomdi.configuration.client" level="INFO" additivity="false">
+        <appender-ref ref="LogFileAppender"/>
+    </logger>
+
+    <root level="WARN">
+        <appender-ref ref="LogFileAppender"/>
+    </root>
+    {{- end }}
+</configuration>

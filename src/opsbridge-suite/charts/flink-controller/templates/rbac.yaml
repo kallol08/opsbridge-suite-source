@@ -1,0 +1,84 @@
+{{ if .Values.global.rbac.serviceAccountCreate -}}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Values.deployment.rbac.serviceAccount }}
+  namespace: {{ .Release.Namespace }}
+imagePullSecrets:
+- name: {{ .Values.global.docker.imagePullSecret | default "registrypullsecret" }}
+{{- end }}
+{{- if .Values.global.rbac.roleCreate }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: itom-analytics-flink-controller-role
+  namespace: {{ .Release.Namespace }}
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - patch
+  - update
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - list
+  - watch
+- apiGroups:
+  - extensions
+  resources:
+  - deployments
+  verbs:
+  - get
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - apps
+  resources:
+  - deployments/scale
+  verbs:
+  - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: itom-analytics-flink-controller-rb
+  namespace: {{ .Release.Namespace }}
+subjects:
+- kind: ServiceAccount
+  name: {{ .Values.deployment.rbac.serviceAccount }}
+  namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: itom-analytics-flink-controller-role
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: itom-analytics-flink-controller-vault-client-rb
+  namespace: {{ .Release.Namespace }}
+subjects:
+- kind: ServiceAccount
+  name: {{ .Values.deployment.rbac.serviceAccount }}
+  namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: microfocus:cdf:itom-vault-client
+{{- end }}

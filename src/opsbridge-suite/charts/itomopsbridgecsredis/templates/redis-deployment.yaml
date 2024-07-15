@@ -1,0 +1,174 @@
+{{/*# Copyright 2023 Open Text.*/}}
+
+{{/*# The only warranties for products and services of Open Text and its affiliates*/}}
+{{/*# and licensors ("Open Text") are as may be set forth in the express warranty*/}}
+{{/*# statements accompanying such products and services. Nothing herein should be*/}}
+{{/*# construed as constituting an additional warranty. Open Text shall not be*/}}
+{{/*# liable for technical or editorial errors or omissions contained herein. The*/}}
+{{/*# information contained herein is subject to change without notice.*/}}
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: itom-opsbridge-cs-redis
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    deployment.microfocus.com/default-replica-count: "1"
+    deployment.microfocus.com/runlevel: DB
+  labels:
+    service: cs-redis
+    app.kubernetes.io/name: itom-opsbridge-cs-redis
+    app.kubernetes.io/managed-by: itom-opsbridge-cs-redis
+    app.kubernetes.io/version: {{ .Values.global.itomRedis.imageTag }}
+    itom.microfocus.com/capability: cs
+    tier.itom.microfocus.com/redis: redis
+spec:
+  replicas: {{ .Values.redis.replicaCount }}
+  selector:
+    matchLabels:
+      service: cs-redis
+      itom.microfocus.com/capability: cs
+  strategy: {}
+  template:
+    metadata:
+      labels:
+        service: cs-redis
+        itom.microfocus.com/capability: cs
+      annotations:
+        {{- if .Values.global.vaultAppRole }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-{{ .Values.global.vaultAppRole }}
+        {{- else }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-default
+        {{- end }}
+        pod.boostport.com/vault-init-container: install
+    spec:
+      serviceAccount: {{ .Values.deployment.rbac.serviceAccount }}
+      serviceAccountName: {{ .Values.deployment.rbac.serviceAccount }}
+      initContainers:
+      {{- include "helm-lib.waitForVault" . | nindent 6 }}
+      {{- $certName := printf "Realm:RID,Common_Name:cs-redis,Additional_SAN:cs-redis.%s/cs-redis.%s.svc.cluster.local,File_Name:cs-redis;Realm:RE,Common_Name:cs-redis,Additional_SAN:cs-redis.%s/cs-redis.%s.svc.cluster.local,File_Name:cs-redis" ( .Release.Namespace ) ( .Release.Namespace ) ( .Release.Namespace ) ( .Release.Namespace )  -}}
+      {{- include "helm-lib.containers.vaultInit" (dict "certNames" $certName "Values" .Values) | nindent 6 }}
+      containers:
+      - image: {{ .Values.global.docker.registry }}/{{ .Values.global.docker.orgName }}/{{ .Values.global.itomRedis.image }}:{{ .Values.global.itomRedis.imageTag }}
+        livenessProbe:
+          exec:
+            command:
+            - /bin/probeRedis.sh
+          initialDelaySeconds: 120
+          timeoutSeconds: 60
+          periodSeconds: 120
+        name: cs-redis
+        env:
+        - name: REDIS_CONF_KEY
+          value: "redis_conf"
+        - name: REDIS_PWD_KEY
+          value: "redis_pwd"
+        - name: CERT_COMMON_NAME
+          value: "cs-redis"
+        - name: REDIS_NUM_DB
+          value: {{ .Values.redis.redisdbcount | quote }}
+        - name: ENABLE_REDIS_NOTIFY_KEYSPACE_EVENTS
+          value: "true"
+        - name: REDIS_APPENDONLY
+          value: "no"
+        - name: ENABLE_REDISEARCH_MODULE
+          value: "true"
+        - name: REDIS_CONTAINER_MODE
+          value: "redis"
+        - name: "NODE_OPTIONS"
+          valueFrom:
+            configMapKeyRef:
+              name: cs-config
+              key: cs.nodeOptions
+        ports:
+        - containerPort: 6380
+          protocol: TCP
+        resources:
+          requests:
+            cpu: {{ .Values.redis.resources.requests.cpu }}
+            memory: {{ .Values.redis.resources.requests.memory }}
+          limits:
+            memory: {{ .Values.redis.resources.limits.memory }}
+            cpu: {{ .Values.redis.resources.limits.cpu }}
+        volumeMounts:
+          - name: cs-redis-persistent-storage
+            mountPath: /data
+            subPath: redis-cs/data
+          - name: vault-token
+            mountPath: /var/run/secrets/boostport.com
+          - name: cs-temp-storage
+            mountPath: /tmp
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          privileged: false
+          readOnlyRootFilesystem: true
+      - image: {{ .Values.global.docker.registry }}/{{ .Values.global.docker.orgName }}/{{ ( coalesce .Values.global.itomRedis.image .Values.redis.image ) }}:{{ ( coalesce .Values.global.itomRedis.imageTag .Values.redis.imageTag ) }}
+        name: cs-redis-exporter
+        env:
+        - name: REDIS_PWD_KEY
+          value: "redis_pwd"
+        - name: CERT_COMMON_NAME
+          value: "cs-redis"
+        - name: REDIS_NUM_DB
+          value: {{ .Values.redis.redisdbcount | quote }}
+        - name: ENABLE_REDIS_NOTIFY_KEYSPACE_EVENTS
+          value: "true"
+        - name: ENABLE_REDISEARCH_MODULE
+          value: "true"
+        - name: REDIS_CONTAINER_MODE
+          value: "exporter"
+        - name: "NODE_OPTIONS"
+          valueFrom:
+            configMapKeyRef:
+              name: cs-config
+              key: cs.nodeOptions
+        ports:
+        - containerPort: 9121
+          name: redis-exporter
+          protocol: TCP
+        resources:
+          requests:
+            cpu: {{ .Values.redis.resources.requests.cpu }}
+            memory: {{ .Values.redis.resources.requests.memory }}
+          limits:
+            memory: {{ .Values.redis.resources.limits.memory }}
+            cpu: {{ .Values.redis.resources.limits.cpu }}
+        volumeMounts:
+          - name: vault-token
+            mountPath: /var/run/secrets/boostport.com
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          privileged: false
+          readOnlyRootFilesystem: true
+      {{- include "helm-lib.containers.vaultRenew" (dict "Values" .Values) | nindent 6 }}
+      restartPolicy: Always
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: {{ .Values.global.securityContext.user | int64 }}
+        runAsGroup: {{ .Values.global.securityContext.fsGroup | int64 }}
+        fsGroup: {{ .Values.global.securityContext.fsGroup | int64 }}
+
+      {{- with ( coalesce .Values.global.nodeSelector .Values.nodeSelector ) }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+
+      volumes:
+      - name: vault-token
+        emptyDir: {}
+      - name: cs-redis-persistent-storage
+        {{- include "helm-lib.pvcStorage" (dict "claim" "dbVolumeClaim" "Release" .Release "Template" .Template "Values" .Values ) | nindent 8 }}
+      - name: cs-temp-storage
+        emptyDir: {}

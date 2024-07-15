@@ -1,0 +1,169 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: itom-analytics-aec-flink-svc
+  namespace:  {{ .Release.Namespace }}
+  labels:
+    {{- template "aec.defaultLabels" (dict "NameSuffix" "aec-flink-svc" "Version" .Values.aecImages.flinkPipeline.imageTag "Component" "aec-flink" "HelmRelease" .Release.Name "Chart" .Chart) }}
+spec:
+  type: ClusterIP
+  sessionAffinity: ClientIP
+  ports:
+  - name: rpc
+    port: {{ .Values.deployment.flinkPipeline.clusterPorts.rpc }}
+  - name: blob-server
+    port: {{ .Values.deployment.flinkPipeline.clusterPorts.blobServer }}
+  selector:
+    app: itom-analytics-aec-pipeline-jm
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: itom-analytics-aec-flink-rest-svc
+  namespace:  {{ .Release.Namespace }}
+  labels:
+    {{- template "aec.defaultLabels" (dict "NameSuffix" "aec-flink-rest-svc" "Version" .Values.aecImages.flinkPipeline.imageTag "Component" "aec-flink" "HelmRelease" .Release.Name "Chart" .Chart) }}
+spec:
+  sessionAffinity: ClientIP
+  ports:
+  - name: rest
+    port: {{ .Values.deployment.flinkPipeline.clusterPorts.rest }}
+  {{- if hasKey .Values.deployment.flinkPipeline "nodePort" }}
+    nodePort: {{ .Values.deployment.flinkPipeline.nodePort }}
+  type: NodePort
+  {{- else }}
+  type: ClusterIP
+  {{- end }}
+  selector:
+    app: itom-analytics-aec-pipeline-jm
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: itom-analytics-aec-flink-cm
+  namespace: {{ .Release.Namespace }}
+  labels:
+    flink.aiops.microfocus.com/conf-yaml: "true"
+    {{- template "aec.defaultLabels" (dict "NameSuffix" "aec-flink-cm" "Version" .Chart.AppVersion "Component" "aec-flink" "HelmRelease" .Release.Name "Chart" .Chart) }}
+  annotations:
+    flink.aiops.microfocus.com/jm-deployment-name: "itom-analytics-aec-pipeline-jm"
+    flink.aiops.microfocus.com/tm-deployment-name: "itom-analytics-aec-pipeline-tm"
+data:
+  version: {{ .Chart.AppVersion | quote }}
+  kubernetes.jobmanager.replicas: "1"
+  blob.server.port: {{ .Values.deployment.flinkPipeline.clusterPorts.blobServer | quote }}
+  taskmanager.rpc.port: {{ .Values.deployment.flinkPipeline.clusterPorts.tm | quote }}
+  rest.port: {{ .Values.deployment.flinkPipeline.clusterPorts.rest | quote }}
+  rest.address: "itom-analytics-aec-flink-rest-svc"
+  jobmanager.rpc.port: {{ .Values.deployment.flinkPipeline.clusterPorts.rpc | quote }}
+  jobmanager.rpc.address: "itom-analytics-aec-flink-svc"
+  jobmanager.memory.process.size: "{{ .Values.deployment.flinkPipeline.jobManagerResources.memory }} mb"
+  {{- include "aec.flinkTaskManagerMemory" (dict "Values" .Values "Prefix" "taskmanager.memory.process.size" "Unit" " mb") | indent 2 }}
+  state.checkpoints.dir: "file:/opt/flink/state/checkpoints"
+  state.savepoints.dir: "file:/opt/flink/state/savepoints"
+  execution.savepoint-restore-mode: "CLAIM"
+  execution.checkpointing.externalized-checkpoint-retention: "RETAIN_ON_CANCELLATION"
+  {{- mustMergeOverwrite .Values.flinkPipeline.additionalConf .Values.deployment.flinkPipeline.additionalConf | toYaml | nindent 2 }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: itom-analytics-aec-pipeline-cm
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- template "aec.defaultLabels" (dict "NameSuffix" "aec-pipeline-cm" "Version" .Chart.AppVersion "Component" "aec-flink" "HelmRelease" .Release.Name "Chart" .Chart) }}
+data:
+  {{- if and (.Values.deployment.flinkPipeline.replaceProperties.clustering) (hasKey .Values.deployment.flinkPipeline "clustering.properties") }}
+  clustering.properties: | {{- get .Values.deployment.flinkPipeline "clustering.properties" | nindent 4 }}
+  {{- else }}
+  clustering.properties: |
+    saveToInternalTable=true
+    clusterCacheLimit={{- if or (eq .Values.global.deployment.size "large") (eq .Values.global.deployment.size "extra-large") }}1000{{- else }}500{{- end }}
+    {{- if hasKey .Values.deployment.flinkPipeline "clustering.properties" }}
+      {{- get .Values.deployment.flinkPipeline "clustering.properties" | nindent 4 }}
+    {{- end }}
+  {{- end }}
+
+  {{- if and (.Values.deployment.flinkPipeline.replaceProperties.filter) (hasKey .Values.deployment.flinkPipeline "filter.properties") }}
+    filter.properties: | {{- get .Values.deployment.flinkPipeline "filter.properties" | nindent 4 }}
+  {{- else }}
+  filter.properties: |
+    filterConfig00=!$timestamp.isEmptyOrNull()
+    filterConfig01=&& !$event_id.isEmptyOrNull()
+    filterConfig02=&& ( !$node_ci_cmdb_global_id.isEmptyOrNull() || !$node_ci_cmdb_id.isEmptyOrNull() || !$related_ci_cmdb_global_id.isEmptyOrNull() || !$related_ci_cmdb_id.isEmptyOrNull() )
+    filterConfig03=&& !$@data_source_id.isEmptyOrNull()
+    filterConfig04=&& !$lifecycle_state.isEmptyOrNull()
+    {{- if hasKey .Values.deployment.flinkPipeline "filter.properties" }}
+      {{- get .Values.deployment.flinkPipeline "filter.properties" | nindent 4 }}
+    {{- end }}
+  {{- end }}
+
+  {{- if and (.Values.deployment.flinkPipeline.replaceProperties.mapper) (hasKey .Values.deployment.flinkPipeline "mapper.properties") }}
+    mapper.properties: | {{- get .Values.deployment.flinkPipeline "mapper.properties" | nindent 4 }}
+  {{- else }}
+  mapper.properties: |
+    mappingConfig00=@timestamp (required) := $timestamp
+    mappingConfig01=@partition_key (required) := firstExistingValueOf($node_ci_cmdb_global_id, $node_ci_cmdb_id, $related_ci_cmdb_global_id, $related_ci_cmdb_id)
+    mappingConfig02=@original_id (required) := $event_id
+    mappingConfig03=@data_source_id (required) := $@data_source_id
+    mappingConfig04=title := $title
+    mappingConfig05=severity := $severity
+    mappingConfig06=category := $category
+    mappingConfig07=node_hint := $node_hint
+    mappingConfig08=related_ci_hint := $related_ci_hint
+    mappingConfig09=@topology_key := firstExistingValueOf($related_ci_cmdb_global_id, $related_ci_cmdb_id)
+    mappingConfig10=tenant_id := $tenant_id
+    mappingConfig11=state := $lifecycle_state
+    mappingConfig12=cause_event_id := $cause_event_id
+    mappingConfig13=symptom_event_ids := $symptom_event_ids
+    mappingConfig14=changed_properties := $changed_properties
+    mappingConfig15=sub_category := $sub_category
+    mappingConfig16=aiops_pipeline_cluster_id := $aiops_pipeline_cluster_id
+    mappingConfig17=related_ci_cmdb_id := $related_ci_cmdb_id
+    mappingConfig18=related_ci_cmdb_global_id := $related_ci_cmdb_global_id
+    mappingConfig19=eti_state := $eti_state
+    mappingConfig20=eti_name := $eti_name
+    mappingConfig21=eti_hint := $eti_hint
+    mappingConfig22=application := $application
+    mappingConfig23=object := $object
+    mappingConfig24=collection_policy_name := $collection_policy_name
+    mappingConfig25=collection_policy_condition_id := $collection_policy_condition_id
+    mappingConfig26=ca := $ca
+    mappingConfig27=external_id_in_controlling_system := $external_id_in_controlling_system
+    {{- if hasKey .Values.deployment.flinkPipeline "mapper.properties" }}
+      {{- get .Values.deployment.flinkPipeline "mapper.properties" | nindent 4 }}
+    {{- end }}
+  {{- end }}
+
+  {{- if and (.Values.deployment.flinkPipeline.replaceProperties.correlation) (hasKey .Values.deployment.flinkPipeline "correlation.properties") }}
+    correlation.properties: | {{- get .Values.deployment.flinkPipeline "correlation.properties" | nindent 4 }}
+  {{- else }}
+  correlation.properties: |
+    windowLengthMinutes=11
+    updateWindowLengthMinutes=5
+    windowSlideTimeMinutes=1
+    allowedLatenessMinutes=11
+    refreshIntervalMinutes=5
+    jdbcMaxBulk=1000
+    persistenceMaxBulk=1000
+    persistenceFlushIntervalSeconds=10
+    savePatternTransactions=true
+    trackCorrelationEventSymptomStates=true
+    trackCorrelationEventSymptomStatesMinutes=1440
+    {{- if hasKey .Values.deployment.flinkPipeline "correlation.properties" }}
+      {{- get .Values.deployment.flinkPipeline "correlation.properties" | nindent 4 }}
+    {{- end }}
+  {{- end }}
+---
+apiVersion: v1
+kind: Secret
+type: kubernetes.io/tls
+metadata:
+  name: {{ .Values.flinkPipeline.secretName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- template "aec.defaultLabels" (dict "NameSuffix" "aec-pipeline-secret" "Version" .Chart.AppVersion "Component" "aec-flink" "HelmRelease" .Release.Name "Chart" .Chart) }}
+stringData:
+  tls.crt: managed-elsewhere
+  tls.key: managed-elsewhere

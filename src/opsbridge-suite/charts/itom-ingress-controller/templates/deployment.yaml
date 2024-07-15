@@ -1,0 +1,273 @@
+{{ $namePrefix := include "namePrefix" . }}
+{{ $accessLogDir := "" }}
+{{ $errorLogDir := "" }}
+{{- if index .Values.nginx.configuration "access-log-path" }}
+{{ $accessLogDir = ((index .Values.nginx.configuration "access-log-path") | dir) }}
+{{- end }}
+{{- if index .Values.nginx.configuration "error-log-path" }}
+{{ $errorLogDir = ((index .Values.nginx.configuration "error-log-path") | dir) }}
+{{- end }}
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $namePrefix }}-ingress-controller
+  labels:
+  {{- if .Values.labels }}
+  {{- toYaml .Values.labels | nindent 4 }}
+  {{- end }}
+  {{- include "itom-nginx-ingress-controller.labels" . | nindent 4 }}
+  annotations:
+  {{- toYaml .Values.nginx.deploymentAnnotations | nindent 4 }}
+spec:
+  replicas: {{ .Values.deployment.replicas }}
+  selector:
+    matchLabels:
+     {{- include "itom-nginx-ingress-controller.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "itom-nginx-ingress-controller.selectorLabels" . | nindent 8 }}
+        {{- if .Values.labels }}
+        {{- toYaml .Values.labels | nindent 8 }}
+        {{- end }}
+      annotations:
+        {{- if .Values.global.vaultAppRole }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-{{ .Values.global.vaultAppRole }}
+        {{- else }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-default
+        {{- end }}
+        pod.boostport.com/vault-init-container: install
+    spec:
+      serviceAccountName: {{ template "itom-nginx-ingress-controller.serviceAccountName" . }}
+      securityContext:
+        runAsUser: {{ default 1999 .Values.global.securityContext.user }}
+        runAsGroup: {{ default 1999 .Values.global.securityContext.fsGroup }}
+        fsGroup: {{ default 1999 .Values.global.securityContext.fsGroup }}
+        supplementalGroups: [{{ default 1999 .Values.global.securityContext.fsGroup }}]
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+      {{- include "helm-lib.waitForVault" . | nindent 6 }}
+      {{- if or .Values.nginx.certificate.cn .Values.global.externalAccessHost }}
+      {{- $commonName := coalesce .Values.nginx.certificate.cn .Values.global.externalAccessHost }}
+      {{- if .Values.nginx.certificate.subjectAlternativeNames }}
+      {{ $san :=  .Values.nginx.certificate.subjectAlternativeNames | replace "," "/" }}
+      {{ $certNames := printf "Realm:RE,Common_Name:%s,Additional_SAN:%s,Secret:%s,UpdateSecret:%t,File_Name:%s" $commonName $san .Values.nginx.secretName .Values.nginx.certificate.updateSecret .Values.nginx.certificate.fileName }}
+      {{- include "helm-lib.containers.vaultInit" (dict "certNames" $certNames "Values" .Values) | nindent 6 }}
+      {{ else }}
+      {{- $certNames := printf "Realm:RE,Common_Name:%s,Secret:%s,UpdateSecret:%t,File_Name:%s" $commonName .Values.nginx.secretName .Values.nginx.certificate.updateSecret .Values.nginx.certificate.fileName }}
+      {{- include "helm-lib.containers.vaultInit" (dict "certNames" $certNames "Values" .Values) | nindent 6 }}
+      {{- end -}}
+      {{ else }}
+      {{- include "helm-lib.containers.vaultInit" (dict "certNames" "" "Values" .Values) | nindent 6 }}
+      {{- end }}
+      containers:
+        - name: nginx-ingress-lb
+          image: "{{ .Values.global.docker.registry}}/{{ .Values.global.docker.orgName }}/{{ .Values.nginx.image }}:{{ .Values.nginx.imageTag }}"
+          imagePullPolicy: {{ .Values.global.docker.imagePullPolicy }}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 10254
+              scheme: HTTP
+            initialDelaySeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 15
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 10254
+              scheme: HTTP
+            initialDelaySeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 15
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+              add:
+              - NET_BIND_SERVICE
+          resources:
+          {{- with .Values.resources }}
+          {{- toYaml . | nindent 12 }}
+          {{- end }}
+          env:
+            - name: ACCESS_LOG_SIZE
+              value: {{ .Values.accessLog.size | quote }}
+            - name: ACCESS_LOG_ROTATE
+              value: {{ .Values.accessLog.rotate | quote }}
+            - name: ERROR_LOG_SIZE
+              value: {{ .Values.errorLog.size | quote }}
+            - name: ERROR_LOG_ROTATE
+              value: {{ .Values.errorLog.rotate | quote }}
+            - name: NGINX_CONFIG
+              value: {{ $namePrefix }}-ingress-controller-conf
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: CONTAINER_NAME
+              value: nginx-ingress-lb
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: SYSTEM_USER_ID
+              value: {{ .Values.global.securityContext.user | quote }}
+            {{- if and (or .Values.global.externalAccessCertPort .Values.nginx.service.external.clientCertAuthPort) .Values.nginx.service.external.sslClientCertCAsCM }}
+            - name: CLIENT_CERT_AUTH_PORT
+              value: "8444"
+            - name: SSL_VERIFY_DEPTH
+              value: {{ .Values.nginx.service.external.sslVerifyDepth | quote }}
+            - name: CLIENT_CERT_HEADER
+              value: {{ .Values.nginx.service.external.clientCertHeader | quote }}
+            - name: SSL_CERT_NAME
+              value: {{ .Values.nginx.secretName | quote }}
+            {{- if .Values.nginx.service.external.clientCertAuthIngressHost }}
+            - name: CLIENT_CERT_AUTH_INGRESS_HOST
+              value: {{ .Values.nginx.service.external.clientCertAuthIngressHost | quote }}
+            {{- else }}
+            - name: CLIENT_CERT_AUTH_INGRESS_HOST
+              value: "_"
+            {{- end }}
+            {{- end }}
+          args:
+            - /entrypoint.sh
+            - /nginx-ingress-controller
+            {{- if .Values.defaultBackendRequired }}
+            {{- if and (not .Values.nginx.defaultBackendService) (not .Values.global.nginx.defaultBackendService)}}
+            {{- cat "ERROR: Neither nginx.defaultBackendService nor global.nginx.defaultBackendService is defined" | fail }}
+            {{- end }}
+            - --default-backend-service={{ .Release.Namespace }}/{{ coalesce .Values.nginx.defaultBackendService .Values.global.nginx.defaultBackendService }}
+            {{- end }}
+            - --default-ssl-certificate={{ .Release.Namespace }}/{{ .Values.nginx.secretName }}
+            - --v=0
+            - --configmap={{ .Release.Namespace }}/{{ $namePrefix }}-ingress-controller-conf
+            - --watch-namespace={{ .Release.Namespace }}
+            - --annotations-prefix={{ .Values.global.nginx.annotationPrefix }}
+            - --enable-ssl-chain-completion=false
+            - --http-port=8080
+            - --https-port=8443
+            - --enable-annotation-validation=true
+            - --update-status=false
+            {{- if .Values.tcpServiceConfigmap }}
+            - --tcp-services-configmap={{.Release.Namespace}}/{{.Values.tcpServiceConfigmap}}
+            {{- end }}
+            - --ingress-class={{ .Values.nginx.ingressClass }}
+            - --metrics-per-host=false
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: etc-nginx
+              mountPath: /etc/nginx
+            - name: etc-ingress-controller
+              mountPath: /etc/ingress-controller
+            - name: vault-token
+              mountPath: /var/run/secrets/boostport.com
+            {{- if or $accessLogDir $errorLogDir }}
+            - name: log-dir
+              mountPath: /tmp/log/nginx
+              subPath: nginx
+            {{- if $accessLogDir }}
+            - name: nginx-access-log-dir
+              mountPath: {{ $accessLogDir }}
+            {{- end }}
+            {{- if and $errorLogDir (ne $errorLogDir $accessLogDir) }}
+            - name: nginx-error-log-dir
+              mountPath: {{ $errorLogDir }}
+            {{- end }}
+            - name: logratate-cfg
+              mountPath: /etc/logrotate.d/
+            - name: logratate-status
+              mountPath: /var/lib/logrotate/
+            - name: nginx-status
+              mountPath: /var/lib/misc/
+            {{- end }}
+            {{- if .Values.nginx.service.external.sslClientCertCAsCM }}
+            - name: pki-auth-ca
+              mountPath: /var/run/secrets/boostport.com/pki_auth_ca
+            {{- end }}
+            {{- if hasSuffix "frontend-ui" .Values.nginx.defaultBackendService }}
+            - name: nginx-template
+              mountPath: /etc/nginx-src/template/nginx.tmpl
+              subPath: nginx.tmpl
+            {{- end }}
+        {{- include "helm-lib.containers.vaultRenew" . | nindent 8 }}
+        {{- if .Values.global.prometheus.deployPrometheusConfig }}
+        {{- include "helm-lib.containers.stunnel" (dict "limitsCpu" "20m" "limitsMemory" "20Mi" "requestsCpu" "5m" "requestsMemory" "5Mi" "certFileBaseName" "RE/tls" "listeningPort" "10255" "targetPort" "10254" "Values" .Values) | nindent 8 }}
+        {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: etc-nginx
+          emptyDir: {}
+        - name: etc-ingress-controller
+          emptyDir: {}
+        - name: vault-token
+          emptyDir: {}
+        - name: tlsproxy
+          emptyDir: {}
+        {{- if or $accessLogDir $errorLogDir }}
+        - name: log-dir
+        {{- include "helm-lib.pvcStorage" (dict "claim" "logVolumeClaim" "Release" .Release "Template" .Template "Values" .Values ) | nindent 10 }}
+        {{- if $accessLogDir }}
+        - name: nginx-access-log-dir
+          emptyDir: {}
+        {{- end }}
+        {{- if and $errorLogDir (ne $errorLogDir $accessLogDir) }}
+        - name: nginx-error-log-dir
+          emptyDir: {}
+        {{- end }}
+        - name: logratate-cfg
+          emptyDir: {}
+        - name: logratate-status
+          emptyDir: {}
+        - name: nginx-status
+          emptyDir: {}
+        {{- end }}
+        {{- if hasSuffix "frontend-ui" .Values.nginx.defaultBackendService }}
+        - name: nginx-template
+          configMap:
+            name: {{ $namePrefix }}-nginx-ingress-template
+        {{- end }}
+        {{- if and .Values.nginx.service.external.clientCertAuthPort .Values.nginx.service.external.sslClientCertCAsCM }}
+        - name: pki-auth-ca
+          configMap:
+            name: {{ .Values.nginx.service.external.sslClientCertCAsCM }}
+        {{- end }}
+      {{- with (coalesce .Values.nodeSelector .Values.global.nodeSelector) }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app.kubernetes.io/name
+                      operator: In
+                      values:
+                        - {{ include "namePrefix" . }}-ingress-controller
+                topologyKey: kubernetes.io/hostname
+              weight: 100
+      {{- if or .Values.deployment.tolerations .Values.global.cluster.tolerations }}
+      tolerations:
+        {{- if .Values.deployment.tolerations }}
+        {{- toYaml .Values.deployment.tolerations | nindent 8 }}
+        {{- end }}
+        {{- if .Values.global.cluster.tolerations }}
+        {{- toYaml .Values.global.cluster.tolerations | nindent 8 }}
+        {{- end }}
+      {{- end }}
+  {{- $labelValue := printf "app.kubernetes.io/name: %s-ingress-controller" (include "namePrefix" .) -}}
+  {{- include "helm-lib.network.topologySpreadConstraints" (dict "labelValue" $labelValue "Values" .Values "Capabilities" .Capabilities) | nindent 6 }}
+

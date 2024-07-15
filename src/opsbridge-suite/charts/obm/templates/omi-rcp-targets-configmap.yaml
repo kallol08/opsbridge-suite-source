@@ -1,0 +1,20 @@
+{{- /* Copyright 2020-2023 Open Text */ -}}
+
+{{- if .Values.rcp.enabled -}}
+{{-   $name := print .Values.deployment.name "-rcp-targets" -}}
+{{-   $data := dict -}}
+{{-   $targets202205 := get (get (lookup "v1" "ConfigMap" .Release.Namespace .Values.deployment.name | default dict) "data" | default dict) "rcpTargets" -}}
+{{-   if $targets202205 -}}
+{{-     $_ := set $data "rcpTargets" $targets202205 -}}
+{{    end -}}
+{{-   $prev := lookup "v1" "ConfigMap" .Release.Namespace $name | default (((.Values.unittest).lookup).configmap).rcpTargets | default dict -}}
+{{-   $_ := mergeOverwrite $data (get $prev "data" | default dict) -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+{{   include "obm.rcp.labels" (dict "name" $name "Release" .Release "Chart" .Chart "Values" .Values) | indent 4 }}
+{{   toYaml (dict "data" $data) }}
+{{- end -}}

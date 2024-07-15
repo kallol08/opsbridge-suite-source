@@ -1,0 +1,12 @@
+apiVersion: v2
+appVersion: 24.1.0-0-2.12.1-7
+dependencies:
+- name: helm-lib
+  repository: ""
+  version: 1.9.0-14
+description: Helm chart for vertica
+maintainers:
+- email: mfi-swpdl.askstoreonce@opentext.com
+  name: COSO DL
+name: itomdisharedvertica
+version: 24.1.0-0-2.12.1-7

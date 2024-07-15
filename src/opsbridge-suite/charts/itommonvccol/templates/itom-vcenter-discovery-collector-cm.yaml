@@ -1,0 +1,28 @@
+{{/*# Copyright 2023 Open Text.*/}}
+
+{{/*# The only warranties for products and services of Open Text and its affiliates*/}}
+{{/*# and licensors ("Open Text") are as may be set forth in the express warranty*/}}
+{{/*# statements accompanying such products and services. Nothing herein should be*/}}
+{{/*# construed as constituting an additional warranty. Open Text shall not be*/}}
+{{/*# liable for technical or editorial errors or omissions contained herein. The*/}}
+{{/*# information contained herein is subject to change without notice.*/}}
+
+{{ if .Values.global.monitoringService.enableVMwareMonitor -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: itom-monitoring-vcenter-discovery-collector-cm
+  namespace: {{ .Release.Namespace }}
+data:
+  env.json: |
+    {
+    "CollectorURL": {{ .Values.vcentercollector.svcname  | quote }},
+    "CollectorName": {{ .Values.vcentercollector.config.collectorname  | quote}},
+    "DataType": {{ .Values.vcentercollector.config.discoverydatatype  | quote}},
+    "CollectionType": {{ .Values.vcentercollector.config.discoverycollectiontype  | quote}},
+    "JobType": {{ .Values.vcentercollector.config.discoveryjobtype  | quote}},
+    "MultiDataType": {{ .Values.vcentercollector.config.multidiscoverydatatype  | quote}},
+    "MultiCollectionType": {{ .Values.vcentercollector.config.multidiscoverycollectiontype  | quote}},
+    "MultiJobType": {{ .Values.vcentercollector.config.multidiscoveryjobtype  | quote}}
+    }
+{{- end }}

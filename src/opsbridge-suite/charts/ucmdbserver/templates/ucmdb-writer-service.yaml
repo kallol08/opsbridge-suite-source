@@ -1,0 +1,17 @@
+{{- $namePrefix := include "namePrefix" . -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ printf "%s-ucmdb-writersvc" ($namePrefix) }}
+  labels:
+    name: {{ printf "%s-writersvc" (.Chart.Name) }}
+    {{- include "ucmdb.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  ports:
+    - name: port2
+      port: 8443
+    - name: port3
+      port: 8444
+  selector:
+    workType: ucmdbwriter

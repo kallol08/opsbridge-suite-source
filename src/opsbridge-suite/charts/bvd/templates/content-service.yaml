@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: uif-content-service
+  namespace: {{ .Release.Namespace }}
+  labels:
+    service: uif-content-service
+    app.kubernetes.io/name: uif-content-service
+    app.kubernetes.io/managed-by: bvd-config
+    app.kubernetes.io/version: {{ .Values.bvd.imageTag }}
+    itom.microfocus.com/capability: bvd
+    tier.itom.microfocus.com/contentService: contentService
+spec:
+  ipFamilyPolicy: PreferDualStack
+  ports:
+  - name: content-server
+    port: 4000
+    protocol: TCP
+    targetPort: 4000
+  - name: content-service
+    port: 4001
+    protocol: TCP
+    targetPort: 4001
+  selector:
+    app.kubernetes.io/name: content-service

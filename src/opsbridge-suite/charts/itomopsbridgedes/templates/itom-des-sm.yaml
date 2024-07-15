@@ -1,0 +1,46 @@
+{{/*# Copyright 2023 Open Text.*/}}
+
+{{/*# The only warranties for products and services of Open Text and its affiliates*/}}
+{{/*# and licensors ("Open Text") are as may be set forth in the express warranty*/}}
+{{/*# statements accompanying such products and services. Nothing herein should be*/}}
+{{/*# construed as constituting an additional warranty. Open Text shall not be*/}}
+{{/*# liable for technical or editorial errors or omissions contained herein. The*/}}
+{{/*# information contained herein is subject to change without notice.*/}}
+
+{{ if and (.Capabilities.APIVersions.Has "monitoring.coreos.com/v1") .Values.global.prometheus.deployPrometheusConfig }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  labels:
+    app: itom-opsbridge-data-enrichment-service-app
+    app.kubernetes.io/name: itom-opsbridge-data-enrichment-service
+    {{- include "servicemonitor.labels" . | nindent 4 }}
+  name: itom-opsbridge-data-enrichment-service
+  namespace: {{ .Release.Namespace }}
+spec:
+  endpoints:
+  - interval: 20s
+    path: /metrics
+    scheme: https
+    targetPort: 8080
+    tlsConfig:
+      ca:
+        configMap:
+          key: {{ include "helm-lib.getTlsCertNameFromRealmList" (dict "Values" .Values) }}
+          name: public-ca-certificates
+      cert:
+        secret:
+          key: server.crt
+          name: itom-opsbridge-des-metrics-client
+      insecureSkipVerify: true
+      keySecret:
+        key: server.key
+        name: itom-opsbridge-des-metrics-client
+      serverName: itom-opsbridge-des-svc
+    relabelings:
+    {{- include "servicemonitor.relabelings" . | nindent 4 }}
+  selector:
+    matchLabels:
+      app: itom-opsbridge-data-enrichment-service-app
+  {{- include "servicemonitor.namespaceSelector" . | nindent 2 }}
+{{ end }}

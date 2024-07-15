@@ -1,0 +1,200 @@
+{{/*# Copyright 2023 Open Text.*/}}
+
+{{/*# The only warranties for products and services of Open Text and its affiliates*/}}
+{{/*# and licensors ("Open Text") are as may be set forth in the express warranty*/}}
+{{/*# statements accompanying such products and services. Nothing herein should be*/}}
+{{/*# construed as constituting an additional warranty. Open Text shall not be*/}}
+{{/*# liable for technical or editorial errors or omissions contained herein. The*/}}
+{{/*# information contained herein is subject to change without notice.*/}}
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    deployment.microfocus.com/default-replica-count: "1"
+    deployment.microfocus.com/runlevel: UP
+  name: itom-opsbridge-des-cicache-builder
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: itom-opsbridge-des-cicache-builder-app
+spec:
+  replicas: {{ .Values.deployment.cicache.config.replica }}
+  selector:
+    matchLabels:
+      app: itom-opsbridge-des-cicache-builder-app
+  template:
+    metadata:
+      labels:
+        app: itom-opsbridge-des-cicache-builder-app
+        service: itom-opsbridge-des-cicache-builder-svc
+        app.kubernetes.io/name: itom-opsbridge-des-cicache-builder
+        app.kubernetes.io/managed-by: {{ .Release.Name }}
+        app.kubernetes.io/version: {{ .Values.cicache.imageTag }}
+        itom.microfocus.com/capability: HyperscaleObservability
+        tier.itom.microfocus.com/backend: backend
+        itom.microfocus.com/description: Des_cicache_builder
+      annotations:
+        {{- if .Values.global.vaultAppRole }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-{{ .Values.global.vaultAppRole }}
+        {{- else }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-default
+        {{- end }}
+        pod.boostport.com/vault-init-container: install
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/des-cicache-builder/mgmt/prometheus"
+        prometheus.io/port: "8443"
+        prometheus.io/scheme: "https"
+    spec:
+      serviceAccountName: {{ .Values.deployment.rbac.serviceAccount }}
+      securityContext:
+        runAsUser: {{ .Values.global.securityContext.user }}
+        runAsGroup: {{ .Values.global.securityContext.fsGroup }}
+        fsGroup: {{ .Values.global.securityContext.fsGroup }}
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        {{- $certNames := printf "Common_Name:%s,Additional_SAN:itom-opsbridge-des-cicache-builder-svc,Secret:itom-opsbridge-des-cicache-builder-metrics-client,UpdateSecret:true,File_Name:server" .Values.global.externalAccessHost -}}
+        {{- include "helm-lib.containers.vaultInit" (dict "containerName" "install" "certNames" $certNames "Values" .Values) | nindent 8 }}
+      containers:
+        {{- include "helm-lib.containers.vaultRenew" (dict "containerName" "kubernetes-vault-renew" "Values" .Values) | nindent 8 }}
+        - name: itom-opsbridge-des-cicache-builder
+          image: {{ .Values.global.docker.registry }}/{{ .Values.global.docker.orgName }}/{{ .Values.cicache.image }}:{{ .Values.cicache.imageTag }}
+          imagePullPolicy: {{ .Values.global.docker.imagePullPolicy }}
+          securityContext:
+            runAsUser: {{ .Values.global.securityContext.user }}
+            runAsGroup: {{ .Values.global.securityContext.fsGroup }}          
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+              - ALL
+          readinessProbe:
+            exec:
+              command:
+              - curl
+              - https://localhost:8443/des-cicache-builder/api/base/v1/ready
+              - -k
+            failureThreshold: 3
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            successThreshold: 1
+            timeoutSeconds: 30
+          ports:
+          - containerPort: 8443
+            name: mdes
+            protocol: TCP
+          - containerPort: 8443
+            name: prometheus-mdes
+            protocol: TCP
+          resources:
+            limits:
+              cpu: 2
+              memory: 1Gi
+            requests:
+              cpu: 100m
+              memory: 200Mi
+          volumeMounts:
+            - name: vault-token
+              mountPath: /var/run/secrets/boostport.com
+            - name: des-cicache-log-volume
+              mountPath: /service/log
+              subPath: cloud-monitoring/des/cicache
+            - name: secret-volume
+              mountPath: /certs/ssl/ca
+            - name: conf
+              mountPath: /config
+            - name: tmp-storage
+              mountPath: /tmp
+            - name: conf-storage
+              mountPath: /service/conf
+          env:
+          - name: "REDIS_HOST"
+            value: {{ .Values.redis.svcname }}
+          - name: "REDIS_PORT"
+            value: {{ .Values.redis.port | quote }}
+          - name: "REDIS_PASSWORD_KEY"
+            value: {{ .Values.redis.passwdkey }}
+          - name: "REDIS_SECURITY_ENABLED"
+            value: {{ .Values.cicache.config.redisSecurityEnabled | quote }}
+          - name: "IS_REDIS_CONNECTION_ENABLED"
+            value: {{ .Values.cicache.config.isRedisConnectionEnabled | quote }}
+          - name: "IS_UCMDB_CONNECTION_ENABLED"
+            value: {{ .Values.cicache.config.isUCMDBConectionEnabled | quote }}
+          {{- if eq .Values.global.amc.externalOBM true }}
+          - name: "EXTERNAL_OBM"
+            value: {{ .Values.global.amc.externalOBM | quote }}
+          - name: "CI_COLLECTION_INTERVAL_MIN"
+            value: {{ .Values.cicache.ciCollectionIntervalMin | quote }}
+          - name: "RTSM_USERNAME"
+            value: {{ required "Required value is not defined: global.amc.rtsmUsername" .Values.global.amc.rtsmUsername | quote }}
+          - name: "RTSM_HOST"
+            value: {{ required "Required value is not defined: global.amc.obmHostname" .Values.global.amc.obmHostname | quote }}
+          - name: "RTSM_PORT"
+            value: {{ required "Required value is not defined: global.amc.port" .Values.global.amc.port | quote }}
+          - name: "RTSM_PROTOCOL"
+            value: {{ default "https" .Values.global.amc.rtsmProtocol | quote }}
+          - name: "RTSM_PASSWORD_KEY"
+            value: {{ .Values.ucmdb.rtsmPasswordKeyExternal }}
+          {{- else }}
+          - name: "RTSM_USERNAME"
+            value: {{ .Values.ucmdb.rtsmUserName }}
+          - name: "RTSM_HOST"
+            value: {{ .Values.ucmdb.rtsmHost }}
+          - name: "RTSM_PORT"
+            value: {{ .Values.ucmdb.rtsmPort | quote }}
+          - name: "RTSM_PROTOCOL"
+            value: {{ .Values.ucmdb.rtsmProtocol }}
+          - name: "RTSM_PASSWORD_KEY"
+            value: {{ .Values.ucmdb.rtsmPasswordKey }}
+          {{- end }}
+          - name: "PROMETHEUS_METRICS_PORT"
+            value: "8443"
+          - name: "RTSM_CUSTOMERID"
+            value: {{ .Values.ucmdb.rtsmCustomerId | quote }}
+          - name: "ENABLE_UNAUTHENTICATED_METRICS"
+            value: {{ .Values.cicache.config.enableUnauthenticatedMetrics | quote }}
+          - name: "TAG_INDEX_KEY"
+            value: {{ .Values.des.indexKey | quote }}
+          - name: MY_NODE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName
+          - name: MY_POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: MY_POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          - name: MY_POD_IP
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIP
+          - name: MY_CONTAINER_NAME
+            value: itom-opsbridge-data-cicache-builder
+      {{- with ( coalesce .Values.nodeSelector .Values.global.nodeSelector ) }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+      - name: vault-token
+        emptyDir: {}
+      - name: tmp-storage
+        emptyDir: {}
+      - name: conf-storage
+        emptyDir: {}
+      - name: des-cicache-log-volume
+        {{- include "helm-lib.pvcStorage" (dict "claim" "logVolumeClaim" "Release" .Release "Template" .Template "Values" .Values ) | nindent 8 }}
+      - name: conf
+        configMap:
+          name: itom-des-cm
+          defaultMode: 0755
+      - name: secret-volume
+        projected:
+          defaultMode: 420
+          sources:
+          - configMap:
+              name: api-client-ca-certificates

@@ -1,0 +1,52 @@
+{{/*# Copyright 2023 Open Text.*/}}
+
+{{/*# The only warranties for products and services of Open Text and its affiliates*/}}
+{{/*# and licensors ("Open Text") are as may be set forth in the express warranty*/}}
+{{/*# statements accompanying such products and services. Nothing herein should be*/}}
+{{/*# construed as constituting an additional warranty. Open Text shall not be*/}}
+{{/*# liable for technical or editorial errors or omissions contained herein. The*/}}
+{{/*# information contained herein is subject to change without notice.*/}}
+
+{{ if .Values.global.monitoringService.enableGcpMonitor -}}
+{{ if .Values.global.rbac.serviceAccountCreate -}}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Values.deployment.rbac.serviceAccount }}-discovery
+  namespace: {{ .Release.Namespace }}
+imagePullSecrets:
+- name: {{ .Values.global.docker.imagePullSecret | default "registrypullsecret" }}
+{{- end }}
+
+{{- if .Values.global.rbac.roleCreate }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: itom-opsb-cloud-gcp-discovery-rb
+  namespace: {{ .Release.Namespace }}
+subjects:
+- kind: ServiceAccount
+  name: {{ .Values.deployment.rbac.serviceAccount }}-discovery
+  namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: microfocus:cdf:itom-vault-client
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: itom-opsb-cloud-gcp-discovery-rb-prometheus
+  namespace: {{ .Release.Namespace }}
+subjects:
+- kind: ServiceAccount
+  name: {{ .Values.deployment.rbac.serviceAccount }}-discovery
+  namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: monitoringservice:prometheus
+
+{{- end }}
+{{- end }}

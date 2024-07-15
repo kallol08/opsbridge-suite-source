@@ -1,0 +1,78 @@
+[{
+    "operation": "ADD_OR_UPDATE",
+    "type": "role",
+    "names": {
+      "organizationName": "Provider"
+    },
+    "attributes": {
+      "name": "GET_ORG_ROLE",
+      "displayName": "Get Organization",
+      "description": "Get Organization Role"
+    },
+    "associations": [{
+        "name": "GET_ORGANIZATION",
+        "type": "permission"
+      }
+    ]
+  }, {
+    "operation": "ADD_OR_UPDATE",
+    "type": "databaseUser",
+    "names": {
+      "organizationName": "Provider"
+    },
+    "attributes": {
+      "name": "opticdl_admin",
+      "password": "{idm_opticdl_admin_password}",
+      "type": "REGULAR"
+    },
+    "associations": [{
+        "name": "GET_ORG_ROLE",
+        "type": "role"
+      }
+    ]
+  }, {
+    "operation": "ADD_OR_UPDATE",
+    "type": "databaseUser",
+    "names": {
+      "organizationName": "Provider"
+    },
+    "attributes": {
+      "name": "admin"
+    },
+    "associations": [{
+        "name": "BACKUP_ADMIN",
+        "type": "role",
+        "application": "IDM"
+      }
+    ]
+  }, {
+    "operation": "ADD_OR_UPDATE",
+    "type": "databaseUser",
+    "names": {
+      "organizationName": "Provider",
+      "databaseUserName": "integration_admin"
+    },
+    "attributes": {
+      "name": "integration_admin",
+      "type": "SYSTEM"
+    },
+    "associations": [{
+        "name": "BACKUP_ADMIN",
+        "type": "role",
+        "application": "IDM"
+      }
+    ]
+  }, {
+    "operation": "ADD_OR_UPDATE",
+    "type": "role",
+    "names": {
+      "organizationName": "Provider"
+    },
+    "attributes": {
+      "name": "cloud_sme_beta_role",
+      "displayName": "Cloud SME Beta",
+      "description": "Role for Hyperscale Observerability SME Beta",
+      "application": "OBM"
+    }
+  }
+]

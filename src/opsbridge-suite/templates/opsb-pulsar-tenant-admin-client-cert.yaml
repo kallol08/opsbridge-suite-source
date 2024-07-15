@@ -1,0 +1,22 @@
+{{- if .Values.pulsartenantadminCert }}
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: opsb-pulsar-tenant-admin-client-cert
+  annotations:
+    "helm.sh/hook": "pre-install,pre-upgrade"
+    "helm.sh/hook-delete-policy": before-hook-creation
+    "helm.sh/hook-weight": "-1000"              #This configmap will be created as the first pre-hook resource
+data:
+  {{- if .Values.pulsartenantadminCert }}
+    {{- range $key, $val := .Values.pulsartenantadminCert }}
+    {{- if (contains "-----BEGIN" $val) }}
+    {{ $key | indent 2}}: {{ (b64enc $val) | quote }}
+    {{- else }}
+    {{ $key | indent 2}}: {{ $val | quote }}
+    {{- end }}
+    {{- end }}
+  {{- end }}
+
+ {{- end }}

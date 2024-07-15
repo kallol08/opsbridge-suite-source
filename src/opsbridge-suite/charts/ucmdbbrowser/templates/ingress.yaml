@@ -1,0 +1,48 @@
+{{- $namePrefix := include "namePrefix" . -}}
+{{- if .Values.ingress.enabled -}}
+{{- $labels := include "ucmdb.labels" . -}}
+{{- $annotations := include "ucmdb.ingress.annotations" . -}}
+{{- range $i, $data := .Values.ingress.data }}
+{{- if ne $i 0 }}
+
+---
+{{- end }}
+apiVersion: {{ include "ucmdb.ingress.apiVersion" (dict "Capabilities" $.Capabilities) }}
+kind: Ingress
+metadata:
+  name: {{ $namePrefix }}-{{ $data.name }}-ingress
+  labels:
+{{ $labels | indent 4 }}
+  annotations:
+{{ $annotations | indent 4 }}
+  {{- range $key, $val := $data.annotations }}
+  {{- tpl $key $ | nindent 4 }}: {{ $val | quote }}
+  {{- end }}
+spec:
+{{- if $data.tls }}
+  tls:
+  {{- range $data.tls }}
+    - hosts:
+      {{- range .hosts }}
+        - {{ tpl . $ | quote }}
+      {{- end }}
+      secretName: {{ tpl .secretName $ }}
+  {{- end }}
+{{- end }}
+  rules:
+  {{- range $data.hosts }}
+    - http:
+        paths:
+        {{- $serviceName := tpl .serviceName (dict "namePrefix" $namePrefix "Values" $.Values "Template" $.Template) -}}
+        {{- $port := .servicePort -}}
+        {{- range .paths }}
+          - path: {{ . }}
+            {{- include "ucmdb.ingress.backend" (dict "Capabilities" $.Capabilities "serviceName" $serviceName "servicePort" $port ) | nindent 12 }}
+        {{- end }}
+      {{- $host := tpl .host $ -}}
+      {{- if empty $host | not }}
+      host: {{ $host | quote }}
+      {{- end }}
+  {{- end }}
+{{- end }}
+{{- end }}

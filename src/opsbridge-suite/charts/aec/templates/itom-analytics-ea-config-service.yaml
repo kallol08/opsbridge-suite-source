@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: itom-analytics-ea-config-svc
+  namespace:  {{ .Release.Namespace }}
+  labels:
+    app: itom-analytics-ea-config
+    {{- template "aec.defaultLabels" (dict "NameSuffix" "ea-config-svc" "Version" .Values.aecImages.eaConfig.imageTag "Component" "ea-config" "HelmRelease" .Release.Name "Chart" .Chart) }}
+spec:
+  type: ClusterIP
+  sessionAffinity: ClientIP
+  ports:
+  - port: 8443
+    targetPort: 8443
+  selector:
+    app: itom-analytics-ea-config

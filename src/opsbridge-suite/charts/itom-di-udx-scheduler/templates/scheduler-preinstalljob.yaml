@@ -1,0 +1,140 @@
+{{/* # */}}
+{{/* # Copyright 2023 Open Text. */}}
+{{/* # */}}
+{{/* # The only warranties for products and services of Open Text and its affiliates and  */}}
+{{/* # licensors (“Open Text”) are as may be set forth in the express warranty statements  */}}
+{{/* # accompanying such products and services. Nothing herein should be construed as */}}
+{{/* # constituting an additional warranty. Open Text shall not be liable for technical or */}}
+{{/* # editorial errors or omissions contained herein. The information contained herein is  */}}
+{{/* # subject to change without notice. */}}
+{{/* # */}}
+{{/* # Except as specifically indicated otherwise, this document contains confidential  */}}
+{{/* # information and a valid license is required for possession, use or copying. If this work  */}}
+{{/* # is provided to the U.S. Government, consistent with FAR 12.211 and 12.212, Commercial Computer  */}}
+{{/* # Software, Computer Software Documentation, and Technical Data for Commercial Items are licensed to */}}
+{{/* # the U.S. Government under vendor’s standard commercial license. */}}
+{{/* # */}}
+
+{{- if and .Values.global.preHookSecret (not .Values.global.vertica.embedded) }}
+{{- if .Values.global.rbac.serviceAccountCreate }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Values.deployment.rbac.serviceAccount | default "itom-di-scheduler-sa" }}-preinstall
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    "helm.sh/hook": "pre-install,pre-upgrade"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    "helm.sh/hook-weight": "-500"
+imagePullSecrets:
+- name: {{ .Values.global.docker.imagePullSecret | default "registrypullsecret" }}
+---
+{{- end }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: itom-di-scheduler-udx-preinstall
+  namespace: {{ .Release.namespace }}
+  labels:
+    app: itom-di-scheduler-udx
+    chart: {{ template "scheduler.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+    component: {{ .Values.scheduler.component }}
+    cluster: {{ template "scheduler.fullname" . }}
+    app.kubernetes.io/name:  {{ template "scheduler.fullname" . }}
+    app.kubernetes.io/managed-by: {{.Release.Name}}
+    app.kubernetes.io/version: {{.Chart.Version}}
+  annotations:
+    "helm.sh/hook": "pre-install,pre-upgrade"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    "helm.sh/hook-weight": "-300"
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: itom-di-scheduler-udx
+        release: {{ .Release.Name }}
+        component: {{ .Values.scheduler.component }}
+        cluster: {{ template "scheduler.fullname" . }}
+        app.kubernetes.io/name:  {{ template "scheduler.fullname" . }}
+        app.kubernetes.io/managed-by: {{.Release.Name}}
+        app.kubernetes.io/version: {{.Chart.Version}}
+    spec:
+      serviceAccount: {{ .Values.deployment.rbac.serviceAccount | default "itom-di-scheduler-sa" }}-preinstall
+      serviceAccountName: {{ .Values.deployment.rbac.serviceAccount | default "itom-di-scheduler-sa" }}-preinstall
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: {{ .Values.global.securityContext.user }}
+        runAsGroup: {{ .Values.global.securityContext.fsGroup }}
+        fsGroup: {{ .Values.global.securityContext.fsGroup }}
+        seccompProfile:
+          type: RuntimeDefault
+    {{- with ( coalesce .Values.nodeSelector .Values.global.nodeSelector ) }}
+      nodeSelector:
+        {{ toYaml . }}
+    {{- end }}
+    {{- if .Values.scheduler.tolerations }}
+      tolerations:
+{{ toYaml .Values.scheduler.tolerations | indent 8 }}
+    {{- end }}
+      volumes:
+      - name: secret-volume
+        projected:
+          sources:
+        {{- if .Values.global.tlsTruststore }}
+          - configMap:
+              name: {{ .Values.global.tlsTruststore }}
+        {{- end }}
+      containers:
+      - name: "{{ template "scheduler.fullname" . }}-{{ .Values.scheduler.component }}-preinstall"
+        securityContext:        
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        image: {{ .Values.global.docker.registry }}/{{ .Values.global.docker.orgName }}/{{ .Values.scheduler.image }}:{{ .Values.scheduler.imageTag }}
+        {{- if .Values.scheduler.prehook.resources }}
+        resources:
+{{ toYaml .Values.scheduler.prehook.resources | indent 10 }}
+        {{- end }}
+        command: ["/checkUDXInVertica"]
+        volumeMounts:
+        - name: secret-volume
+          mountPath: /mnt/itom/scheduler/certs
+          readOnly: true
+        env:
+        - name: SCHED_VERTICA_HOST
+          value: {{ template "vertica.host" .}}
+        - name: SCHED_VERTICA_PORT
+          value: {{ template "vertica.port" .}}
+        - name: SCHED_VERTICA_USER
+          value: {{ template "vertica.rwuser" .}}
+        - name: SCHED_VERTICA_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.global.preHookSecret | quote }}
+              key: {{ .Values.global.vertica.rwuserkey | quote }}
+        - name: SCHED_VERTICA_DB
+          value: {{ template "vertica.db" .}}
+        - name: SCHED_VERTICA_IS_TLS_ENABLED
+          value: {{ .Values.global.vertica.tlsEnabled | quote  }}
+        - name: SCHED_VERTICA_TLS_MODE
+        {{- if .Values.scheduler.configData.env.SCHED_VERTICA_TLS_MODE}}
+          value: {{ .Values.scheduler.configData.env.SCHED_VERTICA_TLS_MODE }}
+        {{- else if (eq (.Values.global.vertica.tlsEnabled | toString) "true") }}
+          value: "server-strict"
+        {{- else }}
+          value: "none"
+        {{- end }}
+        - name: CHECK_UDX_LOG_LEVEL
+          value: {{ .Values.scheduler.configData.checkudxLogLevel | default "info" }}
+        - name: SCHEDULER_SUPPORTED_UDX_RPM_VERSIONS
+          value: {{ .Values.scheduler.configData.scheduler.supportedUdxRpmVersions | quote }}
+        - name: ENABLE_COMPATIBLE_UDX_VERSION_CHECK
+          value: {{ .Values.scheduler.configData.scheduler.enableRpmVersionCheck | quote }}
+        - name: SCHEDULER_SUPPORTED_VERTICA_VERSIONS
+          value: {{ .Values.scheduler.configData.scheduler.supportedVerticaVersions | quote }}
+{{- end }}

@@ -1,0 +1,101 @@
+{{- if eq (include "restrict.isClient" .) "true" }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: itom-restrict-upgrade-job
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    "helm.sh/hook": "pre-upgrade"
+    "helm.sh/hook-delete-policy": before-hook-creation
+    "helm.sh/hook-weight": "10"
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      name: itom-restrict-upgrade
+      annotations:
+        {{- if .Values.global.vaultAppRole }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-{{ .Values.global.vaultAppRole }}
+        {{- else }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-default
+        {{- end }}
+        pod.boostport.com/vault-init-container: install
+    spec:
+      securityContext:
+        runAsUser: {{ .Values.global.securityContext.user }}
+        runAsGroup: {{ .Values.global.securityContext.fsGroup }}
+        fsGroup: {{ .Values.global.securityContext.fsGroup }}
+        supplementalGroups: [{{ .Values.global.securityContext.fsGroup }}]
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      serviceAccountName: {{.Values.deployment.rbac.serviceAccount}}
+      initContainers:
+        {{- $idmHost := (coalesce (include "helm-lib.getInternalIdmHost" .) .Values.global.idm.serviceName "itom-idm-svc") -}}
+        {{- $idmPort := (coalesce (include "helm-lib.getInternalIdmPort" .) .Values.global.idm.internalPort "18443") -}}        
+        {{- include "helm-lib.containers.vaultInit" (dict "certNames" (printf "Common_Name:%s,Additional_SAN:%s" .Values.global.externalAccessHost "itom-restrict-upgrade") "Values" .Values) | nindent 6 }}
+      containers:
+        - name: itom-restrict-upgrade
+          image: {{ .Values.global.docker.registry }}/{{ .Values.global.docker.orgName }}/{{ .Values.restrictUpgrade.image }}:{{ .Values.restrictUpgrade.imageTag }}
+          imagePullPolicy: {{ .Values.global.docker.imagePullPolicy }}
+          securityContext:
+            runAsUser: {{ .Values.global.securityContext.user }}
+            runAsGroup: {{ .Values.global.securityContext.fsGroup }}
+            allowPrivilegeEscalation: false
+            privileged: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+              - ALL
+          env:
+            - name: IS_CLIENT
+              value: {{ include "restrict.isClient" . | quote }}
+            - name: PORT
+              value: {{ .Values.itomRestrictUpgrade.port | quote}}
+            - name: ENDPOINT
+              value: {{.Values.itomRestrictUpgrade.endPoint}}           
+            - name: Tenant
+              value: {{.Values.global.idm.tenant}}
+            - name: IDM_USER
+              value: {{ include "restrict.getSharedIdmUser" . }}
+            - name: IDM_USER_KEY
+              value: {{ include "restrict.getSharedIdmKey" . }}
+            - name: MTLS
+              value: "true"
+            - name: IDM_HOST
+              value: {{ include "helm-lib.getExternalIdmHost" . }}
+            - name: IDM_PORT
+              value: {{ include "helm-lib.getExternalIdmPort" . | quote}}
+            - name: RESTRICT_UPGRADE_SERVER_HOST
+              value: {{ include "helm-lib.getExternalHost" . }}
+            - name: RESTRICT_UPGRADE_SERVER_PORT
+              value: {{ include "helm-lib.getExternalPort" . | quote}}
+          resources:
+            requests:
+              cpu: 10m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 192Mi
+          volumeMounts:
+            - mountPath: /var/run/secrets/boostport.com
+              name: vault-token            
+            - mountPath: /var/run/secrets/restrict-upgrade
+              name: cm-tlstrust-store-volume            
+            - mountPath: /etc/cm
+              name: cm-json-volume                          
+      restartPolicy: Never
+      volumes:
+        - name: vault-token
+          emptyDir: {}                
+        - name: cm-tlstrust-store-volume
+          configMap:
+            name: {{ .Values.global.tlsTruststore | quote }}      
+        - name: cm-json-volume
+          configMap:
+            name: service-chart-version
+            defaultMode: 0440        
+
+  backoffLimit: 0
+{{- end }}
+

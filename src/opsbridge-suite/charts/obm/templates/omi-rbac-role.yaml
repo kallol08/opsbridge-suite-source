@@ -1,0 +1,42 @@
+{{- /* Copyright 2020-2023 Open Text */ -}}
+
+{{- if .Values.global.rbac.roleCreate }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ .Values.deployment.name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+{{ include "obm.labels" (dict "name" .Values.deployment.name "Release" .Release "Chart" .Chart "Values" .Values) | indent 4 }}
+rules:
+  {{- /* OBM specific roles */}}
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+    resourceNames:
+      - {{ .Values.deployment.name }}
+      - {{ .Values.deployment.name }}-bbc-trusted-certs
+    verbs:
+      - patch
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    resourceNames:
+      - {{ .Values.deployment.name }}-scripting-host-certificate
+{{- if .Values.rcp.enabled }}
+      - {{ .Values.deployment.name }}-rcp-certificate
+{{- end }}
+    verbs:
+      - patch
+  {{- /* needed for pod reload on public-ca-certificate changes: */}}
+  - apiGroups:
+      - apps
+    resources:
+      - statefulsets
+    resourceNames:
+      - {{ .Values.deployment.name }}
+    verbs:
+      - patch
+{{- end }}

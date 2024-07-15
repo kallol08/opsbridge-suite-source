@@ -1,0 +1,120 @@
+{{/*# Copyright 2023 Open Text*/}}
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: itom-pt-ui-config-job-{{ randAlphaNum 7 | lower }}
+spec:
+  ttlSecondsAfterFinished: {{ .Values.global.jobs.ttlSecondsAfterFinished }}
+  backoffLimit: 120
+  template:
+    metadata:
+      labels:
+        name: itom-pt-ui-config-job
+      annotations:
+        {{- if .Values.global.vaultAppRole }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-{{ .Values.global.vaultAppRole }}
+        {{- else }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-default
+        {{- end }}
+        pod.boostport.com/vault-init-container: install
+    spec:
+      serviceAccountName: itom-pt-ui
+      {{- if ne .Values.global.docker.imagePullSecret "" }}
+      imagePullSecrets:
+        - name: {{ .Values.global.docker.imagePullSecret }}
+      {{- end }}
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: {{ .Values.global.securityContext.user }}
+        runAsGroup: {{ .Values.global.securityContext.fsGroup }}
+        fsGroup: {{ .Values.global.securityContext.fsGroup }}
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        {{- include "helm-lib.waitForVault" . | nindent 8 }}
+        {{ $bvdHost := .Values.deployment.bvdExplore.service }}
+        {{ $bvdPort := .Values.deployment.bvdExplore.port  }}
+        {{- include "helm-lib.waitFor" (dict "service" $bvdHost "port" $bvdPort "Values" .Values) | nindent 8 }}
+        {{ $idmHost := include "helm-lib.getInternalIdmHost" . | default (printf "%s%s" .Values.deployment.idm.namePrefix .Values.deployment.idm.service) }}
+        {{ $idmPort := include "helm-lib.getInternalIdmPort" . | default .Values.deployment.idm.port }}
+        {{ if not (eq $idmHost $bvdHost) }}
+        {{- include "helm-lib.waitFor" (dict "service" $idmHost "port" $idmPort "Values" .Values) | nindent 8 }}
+        {{ end }}
+        {{- include "helm-lib.containers.vaultInit" (dict "containerName" "install" "volumeName" "vault-token" "Values" .Values) | nindent 8 }}
+
+      containers:
+        - name: itom-pt-ui-config-job
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          image: {{ .Values.global.docker.registry }}/{{ .Values.global.docker.orgName }}/{{ .Values.nomUi.image }}:{{ .Values.nomUi.imageTag }}
+          command: ["/bin/sh", "-c", "/opt/OV/registries/copy-config.sh"]
+          resources:
+            {{- toYaml .Values.jobResources | nindent 12 }}
+          env:
+          - name: BVD_EXPLORE_SERVICE_HOST
+            value: {{ $bvdHost | quote }}
+          - name: BVD_EXPLORE_SERVICE_PORT
+            value: {{ $bvdPort | quote }}
+          - name: NOM_ADMIN_USER_KEY
+            value: {{ .Values.adminUser | quote }}
+          - name: NOM_ADMIN_PASSWORD_KEY
+            value: {{ .Values.adminUserPasswordKey | quote }}
+          - name: isCoso
+            value: {{ (((.Values.global.services).opticReporting).deploy) | default "false" | quote }}
+          - name: PERF_DATASOURCE
+            {{- include "helm-lib.injectVar" (dict "varName" "perfTroubleshooting.datasource" "Values" .Values "Template" .Template) | nindent 12 }}
+          - name: isEpr
+            value: {{ .Values.global.isEpr | quote }}
+          - name: SKIPNOMCONFIG
+            value: {{ .Values.skipNomConfig | quote }}
+          - name: IDM_HOST
+            value: {{ $idmHost | quote }}
+          - name: IDM_PORT
+            value: {{ $idmPort | quote }}
+          - name: IDM_TENANT
+            value: {{ (((.Values.global.idm).additionalSeededOrg).name) | default "Provider" | quote }}
+          {{- if ne (include "helm-lib.getBvdExploreHost" .) "" }}
+          - name: BVD_REMOTE_EXPLORE_HOST
+            value: {{ include "helm-lib.getBvdExploreHost" . | quote }}
+          - name: BVD_REMOTE_EXPLORE_PORT
+            value: {{ include "helm-lib.getInternalBvdPort" . | quote }}
+          {{- end }}
+          - name: BASEDIR
+            value: "/"
+          - name: IS_CNO_DEPLOYED
+            value: {{ (((.Values.global.services).cloudObservability).deploy) | default "false" | quote }}
+          imagePullPolicy: {{ .Values.global.docker.imagePullPolicy }}
+          volumeMounts:
+          - name: ui-data-vol
+            mountPath: /var/opt/OV
+          - mountPath: /var/run/secrets/boostport.com
+            name: vault-token
+          - name: bvd-explore-var
+            mountPath: /var/bvd
+            subPath: bvd/var/bvd
+          - name: certs-volume
+            mountPath: /var/opt/OV/certs
+          - name: bvdclicert-dir
+            mountPath: /bvdCliCert
+      volumes:
+      - name: vault-token
+        emptyDir: {}
+      - name: temp
+        emptyDir: {}
+      - name: bvdclicert-dir
+        emptyDir: {}
+      {{- if .Values.global.tlsTruststore }}
+      - name: certs-volume
+        configMap:
+          name: {{ .Values.global.tlsTruststore }}
+      {{- end }}
+      - name: bvd-explore-var
+      {{- include "helm-lib.pvcStorage" (dict "claim" "configVolumeClaim" "Release" .Release "Template" .Template "Values" .Values ) | nindent 8 }}
+      - name: ui-data-vol
+      {{- include "helm-lib.pvcStorage" (dict "claim" "dataVolumeClaim" "Release" .Release "Template" .Template "Values" .Values ) | nindent 8 }}
+

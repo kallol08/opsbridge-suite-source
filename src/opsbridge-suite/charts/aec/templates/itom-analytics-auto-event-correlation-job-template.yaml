@@ -1,0 +1,194 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: itom-analytics-auto-event-correlation-job
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- template "aec.defaultLabels" (dict "NameSuffix" "auto-event-correlation-job" "Version" .Values.aecImages.aecJob.imageTag "Component" "aec-batch-job" "HelmRelease" .Release.Name "Chart" .Chart) }}
+spec:
+  schedule: "*/10 * * * *"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 300
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      ttlSecondsAfterFinished: 86400 # Delete job after 1 day. Else failed jobs could be kept forever
+      template:
+        metadata:
+          annotations:
+            {{- if .Values.global.vaultAppRole }}
+            pod.boostport.com/vault-approle: {{ .Release.Namespace }}-{{ .Values.global.vaultAppRole }}
+            {{- else }}
+            pod.boostport.com/vault-approle: {{ .Release.Namespace }}-default
+            {{- end }}
+            pod.boostport.com/vault-init-container: install
+          labels:
+            itom.microfocus.com/capability: aiops
+        spec:
+          serviceAccountName: {{ .Values.deployment.rbac.serviceAccount }}
+          securityContext:
+            runAsUser: {{ .Values.global.securityContext.user }}
+            runAsGroup: {{ .Values.global.securityContext.fsGroup }}
+            fsGroup: {{ .Values.global.securityContext.fsGroup }}
+            runAsNonRoot: true
+          initContainers:
+          {{- include "helm-lib.containers.vaultInit" (dict "certNames" "itom-analytics" "Values" .Values) | nindent 10 }}
+          {{ include "aec.cacertBundler" . | nindent 10 }}
+          {{ include "aec.waitForResourcePools" . | nindent 10 }}
+          containers:
+          - name: aec-job
+            image: {{ coalesce .Values.aecImages.aecJob.dockerRegistry .Values.docker.registry .Values.global.docker.registry -}}
+            / {{- coalesce .Values.aecImages.aecJob.orgName .Values.docker.orgName .Values.global.docker.orgName -}}
+            / {{- .Values.aecImages.aecJob.image -}}
+            : {{- .Values.aecImages.aecJob.imageTag }}
+            imagePullPolicy: {{ .Values.global.docker.imagePullPolicy }}
+            env:
+            - name: "DEPLOYER_LOG_LEVEL"
+              value: "INFO"
+            - name: "ALWAYS_DETECT_COMMUNITIES"
+              value: "true"
+            - name: "ITOM_ANALYTICS_SCHEMA"
+              value: "itom_analytics_
+                     {{- if hasKey .Values.global.di "tenant" }} {{- .Values.global.di.tenant -}} {{ else -}} provider {{- end }}_
+                     {{- if hasKey .Values.global.ea "deployment" }} {{- .Values.global.ea.deployment -}} {{ else -}} {{ .Values.global.di.deployment }} {{- end }}"
+            - name: "DI_DATA_SET_SCHEMA"
+              value: "mf_shared_{{ if hasKey .Values.global.di "tenant" }} {{- .Values.global.di.tenant -}} {{ else -}} provider {{- end }}_{{ .Values.global.di.deployment }}"
+            - name: "IS_VERTICA_EMBEDDED"
+              value: "{{ .Values.global.vertica.embedded }}"
+            - name: "EXTERNAL_VERTICA_HOSTNAMES"
+              value: {{ .Values.global.vertica.host }}
+            - name: "EXTERNAL_VERTICA_PORT"
+              value: "{{ .Values.global.vertica.port }}"
+            - name: "EXTERNAL_VERTICA_DB"
+              value: {{ .Values.global.vertica.db }}
+            - name: "EXTERNAL_VERTICA_USERNAME"
+              value: {{ .Values.global.vertica.rwuser }}
+            - name: "EXTERNAL_VERTICA_PASS_KEY"
+              value: {{ .Values.global.vertica.rwuserkey }}
+            - name: "AEC_BACKGROUND_POOL"
+              value: {{ include "aec.backgroundResourcepool" . | quote }}
+            - name: "EXTERNAL_VERTICA_TLS_MODE"
+              {{- if .Values.global.vertica.tlsEnabled }}
+              value: {{ .Values.deployment.vertica.tlsMode }}
+              {{- else }}
+              value: disable
+              {{- end }}
+            - name: "JOB_TIMEOUT_MINUTES"
+              valueFrom:
+                configMapKeyRef:
+                  name: itom-analytics-config
+                  key: batch-job.timeout-minutes
+                  optional: true
+            - name: "MIN_GROUP_SIZE"
+              valueFrom:
+                configMapKeyRef:
+                  name: itom-analytics-config
+                  key: algorithm.min-group-size
+                  optional: true
+            - name: "CI_COLLECTION_PATTERN"
+              valueFrom:
+                configMapKeyRef:
+                  name: itom-analytics-config
+                  key: aiops.ci-collection-pattern
+                  optional: true
+            - name: TOPOLOGY_TRAVERSAL_NUM_HOPS
+              valueFrom:
+                configMapKeyRef:
+                  key: aec-ucmdb.traversal-num-hops
+                  name: itom-analytics-config
+                  optional: true
+            - name: PULSAR_TLS
+              value: "true"
+            - name: PULSAR_HOST
+              value: {{ include "helm-lib.getDiPulsarProxyHost" . | default "itomdipulsar-proxy" }}
+            - name: PULSAR_SERVICE_PORT
+              value: {{ include "helm-lib.getDiPulsarProxyClientPort" . | default "6651" | quote }}
+            - name: FLINK_DEFAULT_PARALLELISM
+              value: "{{ .Values.deployment.flinkBatchJob.defaultParallelism }}"
+            - name: FLINK_ENV_JAVA_OPTS_CLI
+              value: "-Xmx150m"
+            volumeMounts:
+            {{- if (hasKey .Values.global "tlsTruststore") }}
+            - name: {{ .Values.externalCerts.volumeName }}
+              mountPath: /service/conf/vertica # base container path
+              readOnly: true
+            {{- end }}
+            - name: vault-token
+              mountPath: /var/run/secrets/boostport.com
+            - name: conf-storage
+              mountPath: /service/conf
+              subPath: itom-analytics/aec-job
+            - name: conf-storage
+              mountPath: /opt/flink/conf
+              subPath: itom-analytics/aec-job/flink
+            - name: log-storage
+              mountPath: /service/log
+              subPath: itom-analytics/aec-job
+            - name: log-storage
+              mountPath: /opt/flink/log
+              subPath: itom-analytics/aec-job/flink
+            - name: data-storage
+              mountPath: /service/data
+              subPath: itom-analytics/aec-job
+            - name: tmp-storage
+              mountPath: /tmp
+            - name: cm-pipeline
+              mountPath: /mnt/cm/pipeline
+            resources:
+            {{- if eq .Values.global.deployment.size "medium" }}
+              requests:
+                memory: "{{ .Values.deployment.flinkBatchJob.memory | default "2300Mi" }}"
+                cpu: "{{ .Values.deployment.flinkBatchJob.cpu | default "2" }}"
+              limits:
+                memory: "{{ .Values.deployment.flinkBatchJob.memory | default "3Gi" }}"
+                cpu: "{{ .Values.deployment.flinkBatchJob.cpu | default "4" }}"
+            {{- else if eq .Values.global.deployment.size "large" }}
+              requests:
+                memory: "{{ .Values.deployment.flinkBatchJob.memory | default "3Gi" }}"
+                cpu: "{{ .Values.deployment.flinkBatchJob.cpu | default "2" }}"
+              limits:
+                memory: "{{ .Values.deployment.flinkBatchJob.memory | default "4Gi" }}"
+                cpu: "{{ .Values.deployment.flinkBatchJob.cpu | default "8" }}"
+            {{- else if eq .Values.global.deployment.size "extra-large" }}
+              requests:
+                memory: "{{ .Values.deployment.flinkBatchJob.memory | default "3Gi" }}"
+                cpu: "{{ .Values.deployment.flinkBatchJob.cpu | default "2" }}"
+              limits:
+                memory: "{{ .Values.deployment.flinkBatchJob.memory | default "4Gi" }}"
+                cpu: "{{ .Values.deployment.flinkBatchJob.cpu | default "8" }}"
+            {{- else }}
+{{/*              # evaluation only*/}}
+              requests:
+                memory: "{{ .Values.deployment.flinkBatchJob.memory | default "2300Mi" }}"
+                cpu: "{{ .Values.deployment.flinkBatchJob.cpu | default "1" }}"
+              limits:
+                memory: "{{ .Values.deployment.flinkBatchJob.memory | default "2300Mi" }}"
+                cpu: "{{ .Values.deployment.flinkBatchJob.cpu | default "2" }}"
+            {{- end }}
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+          restartPolicy: Never
+          {{- with ( coalesce .Values.nodeSelector .Values.global.nodeSelector ) }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumes:
+          {{ include "aec.externalCertsVolume" . | indent 10 }}
+          - name: vault-token
+            emptyDir: {}
+          - name: {{ .Values.cacerts.volumeName }}
+            emptyDir: {}
+          - name: tmp-storage
+            emptyDir:
+              medium: Memory
+          - name: cm-pipeline
+            configMap:
+              name: itom-analytics-aec-pipeline-cm
+          - name: conf-storage
+          {{- include "helm-lib.pvcStorage" (dict "claim" "configVolumeClaim" "Release" .Release "Template" .Template "Values" .Values ) | nindent 12 }}
+          - name: log-storage
+          {{- include "helm-lib.pvcStorage" (dict "claim" "logVolumeClaim" "Release" .Release "Template" .Template "Values" .Values ) | nindent 12 }}
+          - name: data-storage
+          {{- include "helm-lib.pvcStorage" (dict "claim" "dataVolumeClaim" "Release" .Release "Template" .Template "Values" .Values ) | nindent 12 }}

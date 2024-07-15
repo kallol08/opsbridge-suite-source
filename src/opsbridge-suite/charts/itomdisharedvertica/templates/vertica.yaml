@@ -1,0 +1,163 @@
+{{/* # */}}
+{{/* # Copyright 2023 Open Text. */}}
+{{/* # */}}
+{{/* # The only warranties for products and services of Open Text and its affiliates and  */}}
+{{/* # licensors (“Open Text”) are as may be set forth in the express warranty statements  */}}
+{{/* # accompanying such products and services. Nothing herein should be construed as */}}
+{{/* # constituting an additional warranty. Open Text shall not be liable for technical or */}}
+{{/* # editorial errors or omissions contained herein. The information contained herein is  */}}
+{{/* # subject to change without notice. */}}
+{{/* # */}}
+{{/* # Except as specifically indicated otherwise, this document contains confidential  */}}
+{{/* # information and a valid license is required for possession, use or copying. If this work  */}}
+{{/* # is provided to the U.S. Government, consistent with FAR 12.211 and 12.212, Commercial Computer  */}}
+{{/* # Software, Computer Software Documentation, and Technical Data for Commercial Items are licensed to */}}
+{{/* # the U.S. Government under vendor’s standard commercial license. */}}
+{{/* # */}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: itom-di-vertica-svc
+  labels:
+    app.kubernetes.io/name: itom-di-vertica-svc
+    app.kubernetes.io/managed-by: {{.Release.Name}}
+    app.kubernetes.io/version: {{.Values.verticaImage.imageTag}}
+    itom.microfocus.com/capability: itom-data-ingestion
+    tier.itom.microfocus.com/database: database
+    name: itom-di-vertica-svc
+spec:
+{{-  include "helm-lib.service.getIpConfig" . |nindent 2 }}
+  ports:
+    - name: vertica-port
+      port: 5444
+      protocol: TCP
+      targetPort: 5433
+  selector:
+    name: itom-di-vertica-pod
+    
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/name: itom-di-vertica-dpl
+    app.kubernetes.io/managed-by: {{.Release.Name}}
+    app.kubernetes.io/version: {{.Values.verticaImage.imageTag}}
+    itom.microfocus.com/capability: itom-data-ingestion
+    tier.itom.microfocus.com/database: database
+  name: itom-di-vertica-dpl
+  annotations:
+    deployment.microfocus.com/default-replica-count: "1"
+    deployment.microfocus.com/runlevel: DB
+spec:
+
+  replicas: {{ .Values.divertica.config.replicaCount }}
+  selector:
+    matchLabels:
+      name: itom-di-vertica-pod
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: itom-di-vertica-dpl
+        app.kubernetes.io/managed-by: {{.Release.Name}}
+        app.kubernetes.io/version: {{.Values.verticaImage.imageTag}}
+        itom.microfocus.com/capability: itom-data-ingestion
+        tier.itom.microfocus.com/database: database
+        name: itom-di-vertica-pod
+      annotations:
+        {{- if .Values.global.vaultAppRole }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-{{ .Values.global.vaultAppRole }}
+        {{- else }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-default
+        {{- end }}
+        pod.boostport.com/vault-init-container: install
+    spec:
+      serviceAccount: {{ .Values.deployment.rbac.serviceAccount | default "itom-di-vertica-sa" }}
+      serviceAccountName: {{ .Values.deployment.rbac.serviceAccount | default "itom-di-vertica-sa" }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: {{ .Values.global.securityContext.user | int64}}
+        runAsGroup: {{ .Values.global.securityContext.fsGroup | int64}}
+        fsGroup: {{ .Values.global.securityContext.fsGroup | int64}}
+        seccompProfile:
+          type: RuntimeDefault         
+      terminationGracePeriodSeconds: 300
+      containers:
+      - name:  itom-di-vertica-cnt      
+        image: {{ .Values.global.docker.registry }}/{{ .Values.global.docker.orgName }}/{{ .Values.verticaImage.image }}:{{ .Values.verticaImage.imageTag }}
+        {{- if .Values.divertica.probe.liveness.enabled }}
+        livenessProbe:
+          exec:
+            command:
+              - "/sharedvertica/liveness.sh"
+          initialDelaySeconds: {{ .Values.divertica.probe.liveness.initialDelaySeconds }}
+          periodSeconds: {{ .Values.divertica.probe.liveness.periodSeconds }}
+          timeoutSeconds: {{ .Values.divertica.probe.liveness.timeoutSeconds }}
+          failureThreshold: {{ .Values.divertica.probe.liveness.failureThreshold }}
+          successThreshold: {{ .Values.divertica.probe.liveness.successThreshold }}
+        {{- end }}
+        {{- if .Values.divertica.probe.startup.enabled }}
+        startupProbe:
+          exec:
+            command:
+              - "/sharedvertica/startupProbe.sh"
+          initialDelaySeconds: {{ .Values.divertica.probe.startup.initialDelaySeconds }}
+          periodSeconds: {{ .Values.divertica.probe.startup.periodSeconds }}
+          timeoutSeconds: {{ .Values.divertica.probe.startup.timeoutSeconds }}
+          failureThreshold: {{ .Values.divertica.probe.startup.failureThreshold }}
+          successThreshold: {{ .Values.divertica.probe.startup.successThreshold }}
+        {{- end }}
+        imagePullPolicy: {{ .Values.global.docker.imagePullPolicy }}
+        ports:
+        - containerPort: 5433
+        env:
+        - name: _UID
+          value: "{{ .Values.global.securityContext.user | int64 }}"
+        - name: GID
+          value: "{{ .Values.global.securityContext.fsGroup | int64 }}"
+{{/*        # Vertica TLS mode can be none | prefer | required*/}}
+        - name: VERTICA_TLS_MODE
+          value: {{ .Values.divertica.config.tlsMode }}
+        - name: DBA_PASSWORD_KEY
+          value: {{ .Values.divertica.config.passwordKey }}
+        - name: MAX_CLIENT_SESSIONS
+          value: {{.Values.divertica.config.maxClientSession | quote }}
+        - name: LOCK_TIME_OUT
+          value: "21600"
+        - name: LOAD_BALANCE_POLICY
+          value: NONE
+        resources:
+          {{- toYaml .Values.resources | nindent 10 }}
+        volumeMounts:
+        - mountPath: /itomdb
+          name: di-vertica-volume
+          subPath: di/vertica/data
+        - mountPath: /opt/vertica/log
+          name: di-vertica-log-volume
+          subPath: di/vertica/log
+        - name: vault-token
+          mountPath: /var/run/secrets/boostport.com
+        {{- include "helm-lib.containers.vaultRenew" (dict "Values" .Values) | nindent 6 }}
+      restartPolicy: Always
+      initContainers:
+        {{- include "helm-lib.waitForVault" . | nindent 6 }}
+      {{- $certNames := printf "Realm:RE,Common_Name:itom-di-vertica-svc" -}}
+      {{- include "helm-lib.containers.vaultInit" (dict "certNames" $certNames "Values" .Values) | nindent 6 }}      
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File        
+      {{- with ( coalesce .Values.nodeSelector .Values.global.nodeSelector ) }}
+      nodeSelector:
+        {{ toYaml . }}
+      {{- end }}
+      volumes:
+        - name: di-vertica-volume
+        {{- include "helm-lib.pvcStorage" (dict "claim" "dataVolumeClaim" "Release" .Release "Template" .Template "Values" .Values ) | nindent 10 }}
+        - name: di-vertica-log-volume
+        {{- include "helm-lib.pvcStorage" (dict "claim" "logVolumeClaim" "Release" .Release "Template" .Template "Values" .Values ) | nindent 10 }}
+        - name: vault-token
+          emptyDir: {}

@@ -1,0 +1,100 @@
+{{ if .Values.global.services.obm.deploy }}
+{{ if .Capabilities.APIVersions.Has "batch/v1/CronJob" -}}
+apiVersion: batch/v1
+  {{ else -}}
+apiVersion: batch/v1beta1
+  {{- end }}
+kind: CronJob
+metadata:
+  annotations:
+    deployment.microfocus.com/default-replica-count: "{{ .Values.replicaCount }}"
+    deployment.microfocus.com/runlevel: UP
+  name: itom-omi-aec-integration-watcher
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Name }}
+    app.kubernetes.io/name: itom-omi-aec-integration-watcher
+    itom.microfocus.com/capability: opsbridge-suite
+    app.kubernetes.io/version: {{.Values.internalIntegrationImages.itomOmiAecIntegrationWatcher.imageTag }}
+    tier.itom.microfocus.com/backend: backend
+spec:
+  schedule: "*/10 * * * *"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 300
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: itom-omi-aec-integration-watcher
+            itom.microfocus.com/capability: internal-integration
+          annotations:
+            {{- if .Values.global.vaultAppRole }}
+            pod.boostport.com/vault-approle: {{ .Release.Namespace }}-{{ .Values.global.vaultAppRole }}
+            {{- else }}
+            pod.boostport.com/vault-approle: {{ .Release.Namespace }}-default
+            {{- end }}
+            pod.boostport.com/vault-init-container: install
+        spec:
+          serviceAccountName: {{ .Values.deployment.rbac.serviceAccount }}
+          securityContext:
+            runAsUser: {{ .Values.global.securityContext.user }}
+            runAsGroup: {{ .Values.global.securityContext.fsGroup }}
+            fsGroup: {{ .Values.global.securityContext.fsGroup }}
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          initContainers:
+          {{- include "helm-lib.containers.vaultInit" (dict "certNames" (printf "Common_Name:%s,Additional_SAN:%s" .Values.global.externalAccessHost .Values.global.externalAccessHost) "Values" .Values) | nindent 10 }}
+
+          containers:
+            - name: aec-watcher
+              image: {{ .Values.global.docker.registry }}/{{ .Values.global.docker.orgName }}/{{ .Values.internalIntegrationImages.itomOmiAecIntegrationWatcher.image }}:{{ .Values.internalIntegrationImages.itomOmiAecIntegrationWatcher.imageTag }}
+              imagePullPolicy: {{ .Values.global.docker.imagePullPolicy }}
+              resources:
+                requests:
+                  memory: "512Mi"
+                  cpu: "0.1"
+                limits:
+                  memory: "512Mi"
+                  cpu: "1"
+              securityContext:
+                runAsUser: {{ .Values.global.securityContext.user }}
+                runAsGroup: {{ .Values.global.securityContext.fsGroup }}                
+                runAsNonRoot: true
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop:
+                  - ALL
+              env:
+                - name: "EXTERNAL_HOSTNAME"
+                  value: {{ .Values.global.externalAccessHost }}
+                - name: "ENABLE_RECEIVER"
+                  value: "{{ .Values.global.aec.datasource.enablereceiver }}"
+                - name: "GODEBUG"
+                  value: "x509ignoreCN=0"
+              volumeMounts:
+                - name: podinfo
+                  mountPath: /etc/podinfo
+                - name: vault-token
+                  mountPath: /var/run/secrets/boostport.com
+                - name: tmp-storage
+                  mountPath: /tmp
+          restartPolicy: Never
+          {{- with ( coalesce .Values.nodeSelector .Values.global.nodeSelector ) }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumes:
+            - name: podinfo
+              downwardAPI:
+                items:
+                  - path: "namespace"
+                    fieldRef:
+                      fieldPath: metadata.namespace
+            - name: vault-token
+              emptyDir: {}
+            - name: tmp-storage
+              emptyDir: {}
+{{ end }}

@@ -1,0 +1,435 @@
+{{/*# Copyright 2023 Open Text.*/}}
+
+{{/*# The only warranties for products and services of Open Text and its affiliates*/}}
+{{/*# and licensors ("Open Text") are as may be set forth in the express warranty*/}}
+{{/*# statements accompanying such products and services. Nothing herein should be*/}}
+{{/*# construed as constituting an additional warranty. Open Text shall not be*/}}
+{{/*# liable for technical or editorial errors or omissions contained herein. The*/}}
+{{/*# information contained herein is subject to change without notice.*/}}
+
+{{ if .Values.global.monitoringService.enableKubernetesMonitor -}}
+{{- $bbc:= lookup "v1" "ConfigMap" .Release.Namespace "omi-bbc-trusted-certs" | default dict -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    deployment.microfocus.com/default-replica-count: "1"
+    deployment.microfocus.com/runlevel: UP
+  name: itom-monitoring-kubernetes-discovery-collector
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: itom-monitoring-kubernetes-discovery-collector-app
+spec:
+  replicas: {{ .Values.kubernetescollector.config.replicaCount }}
+  selector:
+    matchLabels:
+      app: itom-monitoring-kubernetes-discovery-collector-app
+  template:
+    metadata:
+      labels:
+        app: itom-monitoring-kubernetes-discovery-collector-app
+        service: itom-monitoring-kubernetes-discovery-collector-svc
+        app.kubernetes.io/name: itom-monitoring-kubernetes-discovery-collector
+        app.kubernetes.io/managed-by: {{.Release.Name}}
+        app.kubernetes.io/version: {{ .Values.kubernetescollector.imageTag }}
+        itom.microfocus.com/capability: HyperscaleObservability
+        tier.itom.microfocus.com/backend: backend
+        itom.microfocus.com/description: KUBERNETES_Discovery_Collector
+      annotations:
+        {{- if .Values.global.vaultAppRole }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-{{ .Values.global.vaultAppRole }}
+        {{- else }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-default
+        {{- end }}
+        pod.boostport.com/vault-init-container: install
+        prometheus.io/port: '8080'
+        prometheus.io/scrape: 'true'
+    spec:
+      serviceAccountName: {{ .Values.deployment.rbac.serviceAccount }}-discovery
+      securityContext:
+        runAsUser: {{ .Values.global.securityContext.user }}
+        runAsGroup: {{ .Values.global.securityContext.fsGroup }}
+        fsGroup: {{ .Values.global.securityContext.fsGroup }}
+      initContainers:
+        {{- if (((.Values.global).opsBridge).externalAccessHost) }}
+        {{- include "helm-lib.waitFor" ( dict "service" "itom-monitoring-admin-svc" "port" "8443" "Values" .Values) | nindent 8 }}
+        {{- end }}
+        {{- include "helm-lib.waitFor" ( dict "service" "cs-redis" "port" "6380" "Values" .Values) | nindent 8 }}
+        {{- $certNames := printf "Common_Name:itom-monitoring-kubernetes-discovery-collector,Additional_SAN:itom-monitoring-kubernetes-discovery-collector/itom-monitoring-kubernetes-discovery-collector.%s/itom-monitoring-kubernetes-discovery-collector.%s.svc.cluster.local/itom-monitoring-kubernetes-discovery-collector/itom-monitoring-kubernetes-discovery-collector-svc/itom-monitoring-kubernetes-discovery-collector-svc.%s/itom-monitoring-kubernetes-discovery-collector-svc.%s.svc.cluster.local,Secret:itom-monitoring-kubernetes-discovery-collector-metrics-client,UpdateSecret:true,File_Name:server" .Release.Namespace .Release.Namespace .Release.Namespace .Release.Namespace -}}
+
+       {{- include "helm-lib.containers.vaultInit" (dict "containerName" "install" "certNames" $certNames "Values" .Values) | nindent 8 }}    
+      containers:
+        {{- include "helm-lib.containers.vaultRenew" (dict "containerName" "kubernetes-vault-renew" "Values" .Values) | nindent 8 }}  
+        - name: itom-monitoring-kubernetes-discovery-collector
+          image: {{ .Values.global.docker.registry }}/{{ .Values.global.docker.orgName }}/{{ .Values.kubernetescollector.image }}:{{ .Values.kubernetescollector.imageTag }}
+          imagePullPolicy: {{ .Values.global.docker.imagePullPolicy }}
+          livenessProbe:
+            exec:
+              command:
+                - curl
+                - https://localhost:40006/v1.0/health
+                - --insecure
+                - --key
+                - /var/run/secrets/boostport.com/server.key
+                - --cert
+                - /var/run/secrets/boostport.com/server.crt
+            failureThreshold: 3
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            successThreshold: 1
+            timeoutSeconds: 5
+          readinessProbe:
+            exec:
+              command:
+                - curl
+                - https://localhost:40006/v1.0/health
+                - --insecure
+                - --key
+                - /var/run/secrets/boostport.com/server.key
+                - --cert
+                - /var/run/secrets/boostport.com/server.crt
+            failureThreshold: 3
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 5
+          ports:
+          - containerPort: 40006
+            name: mcoll-knetesc
+            protocol: TCP
+          - containerPort: 8080
+            name: prometheus-k8sc
+            protocol: TCP
+          resources:
+            limits:
+              cpu: 2
+              memory: 1Gi
+            requests:
+              cpu: 100m
+              memory: 200Mi
+          volumeMounts:
+            - name: vault-token
+              mountPath: /var/run/secrets/boostport.com
+            - name: kubernetes-discovery-collector-log-volume
+              mountPath: /logs
+              subPath: cloud-monitoring/kubernetes/discovery/collector
+            - name: kubernetes-metric-collector-conf-volume
+              mountPath: /content
+              subPath: kubernetes-collector/content
+            - name: conf
+              mountPath: /config
+            - mountPath: /udprobe
+              name: kubernetes-collector-data-volume
+              subPath: ucmdb/probe/itom-probe/probeGateway
+            {{- if .Values.rcp.enabled }}
+            - mountPath: /service/edge-certs
+              name: edge-certs-volume
+            {{- if gt (len $bbc) 0 }}  
+            - name: edge-trust-cert
+              mountPath: /service/edge-trust-cert                          
+            {{- end }}
+            {{- end }}    
+          env:
+          {{- if eq .Values.global.isUDCollectionEnabled true }}
+          {{- if (((.Values.global).opsBridge).externalAccessHost) }}
+          - name: "UD_PROBE_NAME"
+            value: {{ required "Required value is not defined: global.edgeProbeName" .Values.global.edgeProbeName }}-probe
+          - name: "IS_EDGE_DEPLOYMENT"
+            value: {{ true | quote }}
+          - name: "UPLOAD_KEYSTORE"
+            value: "true"  
+          {{- if (((.Values.global.opsBridge).proxy).host) }}
+          - name:  PROXY_URL
+            value: {{ .Values.global.opsBridge.proxy.scheme }}://{{ .Values.global.opsBridge.proxy.host }}:{{ .Values.global.opsBridge.proxy.port }}
+          {{- if .Values.global.opsBridge.proxy.user }}
+          - name:  PROXY_USER
+            value: {{ .Values.global.opsBridge.proxy.user }}
+          {{- end }}  
+          - name:  PROXY_PASS_KEY
+            value: {{ default "OPSB_PROXY_PASSWORD" | quote }}
+          {{- end }}                        
+          {{- else}} 
+          - name: "UD_PROBE_NAME"
+            value: "itom-probe"
+          - name: "IS_EDGE_DEPLOYMENT"
+            value: {{ false | quote }}          
+          {{- end}}
+          - name: "CMS_GW_HOST"
+          {{- if (((.Values.global).opsBridge).externalAccessHost) }}
+            value: {{ required "Required value is not defined: Values.global.cms.udHostname" .Values.global.cms.udHostname }}
+          {{- else }}
+            value: {{ required "Required value is not defined: global.externalAccessHost" .Values.global.externalAccessHost | quote }}  
+          {{- end }}
+          - name: "CMS_GW_PORT"
+          {{- if (((.Values.global).opsBridge).externalAccessPort) }}
+            value: {{ required "Required value is not defined: global.cms.port" .Values.global.cms.port | quote }}
+          {{- else }}  
+            value: {{ required "Required value is not defined: global.externalAccessPort" .Values.global.externalAccessPort | quote }}
+          {{- end }}
+          - name: "CUSTOMER_ID"
+            value: {{ .Values.global.cms.customerId | quote }}
+          - name: "CMS_GW_LIMIT"
+            value: {{ .Values.global.cms.cmsGwLimit | quote }}
+          - name: "MONITORED_BY"
+            value: {{ .Values.kubernetescollector.config.monitoredBy | default "MonitoringService" }}
+          - name: ENABLE_SUBSCRIPTION_NOTIFICATION
+            value: "true"          
+          - name: "PARALLEL_RESOURCE_COLLECTION_ENABLED"
+            value: "false"
+          - name: "MAX_CONCURRENT_APP_DISCOVERY"
+            value: "50"
+          - name: "MAX_CONCURRENT_PROMETHEUS_CALLS"
+            value: "100"
+          {{- if eq .Values.global.cms.externalOBM true }}
+          - name: "UD_ENDPOINT"
+          {{- if and ((((.Values.global).opsBridge).externalAccessHost)) (eq .Values.global.opsBridge.externalAccessHost .Values.global.cms.udHostname) }}
+            value: {{ required "Required value is not defined: udProtocol" .Values.global.cms.udProtocol }}://{{ required "Required value is not defined: udHostname" .Values.global.cms.udHostname }}:{{ required "Required value is not defined: port" .Values.global.cms.port }}/ucmdb-server
+          - name: "UD_USER"
+            value: {{ required "Required value is not defined: udUsername" .Values.global.cms.udUsername }}#{{ .Values.global.opsBridge.tenant | default "Provider" }}
+          {{- else }}
+            value: {{ required "Required value is not defined: udProtocol" .Values.global.cms.udProtocol }}://{{ required "Required value is not defined: udHostname" .Values.global.cms.udHostname }}:{{ required "Required value is not defined: port" .Values.global.cms.port }}
+          - name: "UD_USER"
+            value: {{ required "Required value is not defined: udUsername" .Values.global.cms.udUsername }}
+          {{- end }}
+          {{- else }}
+          - name: "UD_ENDPOINT"
+            value: https://{{ required "Required value is not defined: global.externalAccessHost" .Values.global.externalAccessHost }}:{{ required "Required value is not defined: global.externalAccessPort" .Values.global.externalAccessPort }}/ucmdb-server
+          - name: "UD_USER"
+            value: "UISysadmin"
+          {{- end }}
+          {{- end }}
+          - name: MY_NODE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName
+          - name: MY_POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: MY_POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          - name: MY_POD_IP
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIP
+          - name: IDM_USER
+            value: {{ default "integration_admin" | quote }}
+          - name: IDM_KEY
+            value: {{ .Values.global.idm.integrationUserKey | default "idm_integration_admin_password" | quote }}
+          - name: IDM_ADDR
+            value: https://{{ .Values.global.idm.serviceName | default "itom-idm-svc" }}:{{ .Values.global.idm.internalPort | default "18443" }}
+          - name: "TENANT"
+            value: {{ .Values.global.idm.tenant | default "Provider" | quote }}
+          - name: "EDGE_PROXY"
+            value: {{ default "http://omi-rcp:9090" | quote }}
+          - name: MY_CONTAINER_NAME
+            value: itom-monitoring-kubernetes-discovery-collector
+        - name: itom-monitoring-job-fetcher
+          image: {{ .Values.global.docker.registry }}/{{ .Values.global.docker.orgName }}/{{ .Values.global.monitoringService.jobFetcher.image | default  .Values.jobfetcher.image }}:{{ .Values.global.monitoringService.jobFetcher.imageTag | default .Values.jobfetcher.imageTag }}
+          imagePullPolicy: {{ .Values.global.docker.imagePullPolicy }}
+          ports:
+          - containerPort: 40005
+            name: mcoll-knetesj
+            protocol: TCP
+          - containerPort: 41001
+            name: prometheus-k8sj
+            protocol: TCP
+          resources:
+            limits:
+              cpu: 2
+              memory: 500Mi
+            requests:
+              cpu: 100m
+              memory: 200Mi
+          volumeMounts:
+            - name: conf
+              mountPath: /config
+            - name: vault-token
+              mountPath: /var/run/secrets/boostport.com
+            - name: kubernetes-discovery-collector-log-volume
+              mountPath: /logs
+              subPath: cloud-monitoring/kubernetes/discovery/job-fetcher 
+          env:
+          - name: "PROMETHEUS_METRICS_PORT"
+            value: "41001"
+          - name: "MAX_COLLECTION_TASK"
+            value: "2"
+          - name: "REDIS_URL"
+            value: {{ .Values.redis.svcname }}:{{ .Values.redis.port }}
+          - name: "REDIS_SRV_BASE_NAME"
+            value: {{ .Values.redis.srvbasename }}
+          - name: "REDIS_PWD_KEY"
+            value: {{ .Values.redis.passwdkey }}  
+          - name: "SUBSCRIPTION_NAME"
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: "COLLECTION_SCHEDULER_URL"
+            value: {{ .Values.collectionscheduler.svcname }}:{{ .Values.collectionscheduler.port }}
+          - name: "CDF_NAMESPACE"
+            value: {{ .Release.Namespace | quote }}
+          - name: "VAULT_SECRET_DIR"
+            value: /var/run/secrets/boostport.com
+          - name: MY_NODE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName
+          - name: MY_POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: MY_POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          - name: MY_POD_IP
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIP
+          - name: MY_CONTAINER_NAME
+            value: itom-monitoring-job-fetcher
+        - name: itom-monitoring-result-processor
+          image: {{ .Values.global.docker.registry }}/{{ .Values.global.docker.orgName }}/{{ .Values.global.monitoringService.resultProcessor.image | default .Values.resultprocessor.image }}:{{ .Values.global.monitoringService.resultProcessor.imageTag | default .Values.resultprocessor.imageTag }}
+          imagePullPolicy: {{ .Values.global.docker.imagePullPolicy }}
+          ports:
+          - containerPort: 40007
+            name: mcoll-knetesr
+            protocol: TCP
+          - containerPort: 41002
+            name: prometheus-k8sr
+            protocol: TCP
+          resources:
+            limits:
+              cpu: 2
+              memory: 600Mi
+            requests:
+              cpu: 100m
+              memory: 200Mi
+          volumeMounts:
+            - name: vault-token
+              mountPath: /var/run/secrets/boostport.com
+            - name: kubernetes-discovery-collector-log-volume
+              mountPath: /logs
+              subPath: cloud-monitoring/kubernetes/discovery/result-processor
+            {{- if (((.Values.global).opsBridge).externalAccessHost) }}  
+            - mountPath: /saascert
+              name: saascert
+            {{- end }}  
+          env:
+          {{- if (((.Values.global).opsBridge).externalAccessHost) }}
+          - name: EDGE_HOST
+            value: {{ required "Required value is not defined: .Values.global.externalAccessHost" .Values.global.externalAccessHost }}
+          - name: SAAS_IDM_USER
+            value: {{ required "Required value is not defined: .Values.global.opsBridge.user" .Values.global.opsBridge.user }}
+          - name: SAAS_IDM_KEY
+            value: {{ required "Required value is not defined: .Values.global.opsBridge.userKey" .Values.global.opsBridge.userKey }}
+          - name: SAAS_TENANT
+          {{- if (((.Values.global).opsBridge).tenant) }}
+            value: {{ .Values.global.opsBridge.tenant | default "Provider" | quote }}
+          {{- else }}
+            value: "Provider"
+          {{- end }} 
+          - name: IDM_USER
+            value: {{ .Values.global.idm.integrationUser | default "integration_admin" | quote }}
+          - name: IDM_KEY
+            value: {{ .Values.global.idm.integrationUserKey | default "idm_integration_admin_password" | quote }}
+          - name: IDM_ADDR
+            value: https://{{ .Values.global.idm.serviceName | default "itom-idm-svc" }}:{{ .Values.global.idm.internalPort | default "18443" }}/idm-service/v3.0/tokens          
+          - name: "SAAS_EXTERNAL_HOST"
+            value: {{ .Values.global.opsBridge.externalAccessHost | quote }}
+          - name: "SAAS_EXTERNAL_PORT"
+            value: {{ .Values.global.opsBridge.externalAccessPort | quote }}
+          {{- if (((.Values.global).opsBridge).proxy).host }}
+          - name: HTTP_PROXY
+            value: {{ .Values.global.opsBridge.proxy.scheme | default "https" }}://{{ .Values.global.opsBridge.proxy.host }}:{{ .Values.global.opsBridge.proxy.port }}
+          - name: HTTPS_PROXY
+            value: {{ .Values.global.opsBridge.proxy.scheme | default "https" }}://{{ .Values.global.opsBridge.proxy.host }}:{{ .Values.global.opsBridge.proxy.port }}
+          - name: NO_PROXY
+            value: {{ .Values.global.opsBridge.noproxy | default "localhost,127.0.0.1,itom-monitoring-admin-svc,itom-idm-svc,itom-monitoring-snf-svc,credential-manager" }}
+          - name: PROXY_USER
+            value: {{ .Values.global.opsBridge.proxy.user }}
+          - name: PROXY_PASSWORD
+            value: {{ .Values.global.opsBridge.proxy.password }}
+          {{- end }}
+          {{- end }}
+          - name: "PROMETHEUS_METRICS_PORT"
+            value: "41002"
+          - name: "DI_SERVER_URL"
+          {{- if (((.Values.global).opsBridge).externalAccessHost) }}
+            value: {{ .Values.global.desProtocol | default "https" }}://{{ .Values.global.opsBridge.externalAccessHost | default .Values.kubernetescollector.config.desreceiversvc }}:{{  .Values.global.opsBridge.desExternalPort | default .Values.kubernetescollector.config.desreceiverport }}/itomdi/receiver
+          {{- else }}
+            value: {{ .Values.global.desProtocol | default "https" }}://{{ .Values.global.saas.externalAccessHost | default .Values.kubernetescollector.config.desreceiversvc }}:{{ .Values.global.saas.externalAccessPort | default .Values.kubernetescollector.config.desreceiverport }}/itomdi/receiver
+          {{- end }}
+          - name: "SNF_URL"
+            value: {{ .Values.snf.protocol | default "https" }}://{{ .Values.snf.svcname }}:{{ .Values.snf.port}}/v1/forward
+          - name: "SUBSCRIPTION_NAME"
+            value: {{ .Values.resultprocessor.config.subscriptionname | quote  }}
+          - name: "COSO_SUBSCRIPTION"
+            value: {{ .Values.kubernetescollector.config.cososubscription  }}
+          - name: "VAULT_SECRET_DIR"
+            value: /var/run/secrets/boostport.com
+          - name: "REDIS_URL"
+            value: {{ .Values.redis.svcname }}:{{ .Values.redis.port }}
+          - name: "REDIS_SRV_BASE_NAME"
+            value: {{ .Values.redis.srvbasename }}
+          - name: "REDIS_PWD_KEY"
+            value: {{ .Values.redis.passwdkey }}  
+          - name: "REDIS_SET_PREFIX"
+            value: "monitor:"
+          - name: "COLLECTOR_NAME"
+            value: "k8s"
+          - name: MY_NODE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName
+          - name: MY_POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: MY_POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          - name: MY_POD_IP
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIP
+          - name: MY_CONTAINER_NAME
+            value: itom-monitoring-result-processor
+      {{- with (coalesce .Values.nodeSelector .Values.global.nodeSelector) }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:   
+      - name: vault-token
+        emptyDir: {}
+      - name: kubernetes-discovery-collector-log-volume
+        {{- include "helm-lib.pvcStorage" (dict "claim" "logVolumeClaim" "Release" .Release "Template" .Template "Values" .Values ) | nindent 8 }}
+      - name: kubernetes-metric-collector-conf-volume
+        {{- include "helm-lib.pvcStorage" (dict "claim" "configVolumeClaim" "Release" .Release "Template" .Template "Values" .Values ) | nindent 8 }}
+      - name: conf
+        configMap:
+          name: itom-monitoring-kubernetes-discovery-collector-cm
+          defaultMode: 0755
+      {{- if (((.Values.global).opsBridge).externalAccessHost) }}
+      - name: saascert
+        configMap:
+          name: {{ .Values.kubernetescollector.config.monitoringsvcedgecacertificate }}        
+          defaultMode: 0755
+      {{- end }} 
+      - name: kubernetes-collector-data-volume
+        {{- include "helm-lib.pvcStorage" (dict "claim" "dataVolumeClaim" "Release" .Release "Template" .Template "Values" .Values ) | nindent 8 }}
+      {{- if .Values.rcp.enabled }}
+      - name: edge-certs-volume
+        secret:
+          defaultMode: 420
+          secretName: itom-monitoring-kubernetes-rcp          
+      {{- if gt (len $bbc) 0 }}    
+      - name: edge-trust-cert
+        configMap:
+          name: omi-bbc-trusted-certs             
+      {{- end }}
+      {{- end }}      
+{{- end }}

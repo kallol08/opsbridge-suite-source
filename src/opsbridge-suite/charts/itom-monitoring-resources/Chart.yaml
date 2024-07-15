@@ -1,0 +1,9 @@
+apiVersion: v2
+appVersion: 1.5.1
+dependencies:
+- name: helm-lib
+  repository: https://orgartifactory.swinfra.net/artifactory/itom-helm-charts-stable
+  version: 1.5.27
+description: Open Text ITOM Monitoring UI
+name: itom-monitoring-resources
+version: 1.5.1-11

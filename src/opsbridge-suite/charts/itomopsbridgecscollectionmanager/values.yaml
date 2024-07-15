@@ -1,0 +1,80 @@
+# Copyright 2023 Open Text.
+
+# The only warranties for products and services of Open Text and its affiliates
+# and licensors ("Open Text") are as may be set forth in the express warranty
+# statements accompanying such products and services. Nothing herein should be
+# construed as constituting an additional warranty. Open Text shall not be
+# liable for technical or editorial errors or omissions contained herein. The
+# information contained herein is subject to change without notice.
+
+collectionmanager:
+  image: "itom-monitoring-collection-manager"
+  imageTag: 24.2-72
+  config:
+    replicaCount: 1
+    serviceJvmArgs: "-Xmx1024m -XX:+HeapDumpOnOutOfMemoryError"
+    permissibleRequestLimit: "6000"
+    schedulerUrl: "itom-monitoring-job-scheduler-svc:40000"
+redis:
+  svcname: cs-redis
+  port: 6380
+  srvbasename: cs-redis
+  passwdkey: redis_pwd
+deployment:
+  rbac:
+    serviceAccount: itom-opsb-cloud-collection-manager-sa
+global:
+  busybox:
+    image: itom-busybox
+    imageTag: 1.32.0-006
+  toolsBase:
+    image: itom-tools-base
+    imageTag: 1.1.0-0011
+  rbac:
+    serviceAccountCreate: true
+    roleCreate: true
+  nodeSelector: {}
+  persistence:
+    enabled: false
+    configVolumeClaim:
+    logVolumeClaim:
+  suiteLabel: Worker
+  suiteLabelValue: label
+
+  # If isDemo is true, this will allow use of ephemeral storage and other POC aspects.
+  isDemo: false
+  docker:
+    # set the global.docker.registry and orgName to your internal Docker registry/org
+    registry: localhost:5000
+    orgName: hpeswitom
+    imagePullPolicy: IfNotPresent
+
+  securityContext:
+    user: "1999"
+    fsGroup: "1999"
+  vault:
+    realmList: "RE:365"
+
+  # Global image references for vault
+  vaultRenew:
+    image: kubernetes-vault-renew
+    imageTag: 0.8.0-004
+  vaultInit:
+    image: kubernetes-vault-init
+    imageTag: 0.8.0-004
+
+  prometheus:
+    deployPrometheusConfig: true      #true = deploy scraping rules (ServiceMonitor, PodMonitor) and alerts (PrometheusRule)
+    deployGrafanaConfig: true         #true = deploy configmaps defining the Grafana dashboards
+    prometheusSelector:               #define the label(s) that Prometheus looks for when discovering rules.
+      prometheus_config: "1"
+    grafanaSelector:                  #define the label(s) that Grafana looks for when discovering dashboards.
+      grafana_dashboard: "1"
+
+resources:
+  limits:
+    cpu: "1"
+    memory: "4096Mi"
+  requests:
+    cpu: "0.2"
+    memory: "256Mi"

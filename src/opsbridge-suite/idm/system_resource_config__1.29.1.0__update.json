@@ -1,0 +1,12 @@
+[
+  {
+    "operation": "UPDATE",
+    "type": "systemResourceConfig",
+    "names": {
+      "systemResourceConfigName": "lwssoConfig.domain.mode"
+    },
+    "attributes": {
+      "value": "lwsso"
+    }
+  }
+]

@@ -1,0 +1,175 @@
+{{- /* Copyright 2020-2023 Open Text */ -}}
+
+{{- $name := print .Values.deployment.name "-ingress" -}}
+{{- $entrySuffix := .Values.entrypointUrls.enabled | ternary  "(/|$)" "/." -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+{{ include "obm.labels" (dict "name" $name "Release" .Release "Chart" .Chart "Values" .Values) | indent 4 }}
+  annotations:
+    {{- include "helm-lib.ingress.commonAnnotations" . |nindent 4 }}
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    {{ include "obm.ingress.prefix" . }}/affinity: cookie
+    {{ include "obm.ingress.prefix" . }}/session-cookie-name: OPSB_AFFINITY_OBM
+    {{ include "obm.ingress.prefix" . }}/session-cookie-path: /
+    {{ include "obm.ingress.prefix" . }}/backend-protocol: "HTTPS"
+spec:
+  {{- include "helm-lib.ingress.tlsSecret" . |nindent 2 }}
+  rules:
+  - http:
+      paths:
+      - path: /bsm{{ $entrySuffix }}
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ .Values.deployment.name }}
+            port:
+              number: 443
+      - path: /ext(/|$)
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ .Values.deployment.name }}
+            port:
+              number: 443
+      - path: /HPBSM{{ $entrySuffix }}
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ .Values.deployment.name }}
+            port:
+              number: 443
+      - path: /hpbsm{{ $entrySuffix }}
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ .Values.deployment.name }}
+            port:
+              number: 443
+      - path: /mercuryam{{ $entrySuffix }}
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ .Values.deployment.name }}
+            port:
+              number: 443
+      - path: /MercuryAM{{ $entrySuffix }}
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ .Values.deployment.name }}
+            port:
+              number: 443
+      - path: /obm{{ $entrySuffix }}
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ .Values.deployment.name }}
+            port:
+              number: 443
+      - path: /omi{{ $entrySuffix }}
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ .Values.deployment.name }}
+            port:
+              number: 443
+      - path: /opr-admin-server{{ $entrySuffix }}
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ .Values.deployment.name }}
+            port:
+              number: 443
+      - path: /opr-config-server(/|$)
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ .Values.deployment.name }}
+            port:
+              number: 443
+      - path: /opr-console{{ $entrySuffix }}
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ .Values.deployment.name }}
+            port:
+              number: 443
+      - path: /opr-cpdiff-tool(/|$)
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ .Values.deployment.name }}
+            port:
+              number: 443
+      - path: /opr-gateway(/|$)
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ .Values.deployment.name }}
+            port:
+              number: 443
+      - path: /opr-ts(/|$)
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ .Values.deployment.name }}
+            port:
+              number: 443
+      - path: /opr-web{{ $entrySuffix }}
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ .Values.deployment.name }}
+            port:
+              number: 443
+      - path: /OVPM(/|$)
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ .Values.deployment.name }}
+            port:
+              number: 443
+      - path: /topaz{{ $entrySuffix }}
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ .Values.deployment.name }}
+            port:
+              number: 443
+      - path: /Topaz{{ $entrySuffix }}
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ .Values.deployment.name }}
+            port:
+              number: 443
+      - path: /uim(/|$)
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ .Values.deployment.name }}
+            port:
+              number: 443
+      - path: /bsmc/rest/
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ .Values.deployment.name }}
+            port:
+              number: 2443
+{{- if .Values.entrypointUrls.enabled }}
+      - path: /$
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ .Values.deployment.name }}
+            port:
+              number: 443
+{{- end }}
+{{- if .Values.global.setFqdnInIngress }}
+    host: {{ .Values.global.externalAccessHost }}
+{{- end }}

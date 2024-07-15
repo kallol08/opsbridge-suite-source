@@ -1,0 +1,171 @@
+# Copyright 2023 Open Text.
+#
+#  The only warranties for products and services of Open Text and its affiliates and licensors (“Open Text”) are as may be set forth in the express warranty statements accompanying such products and services. Nothing herein should be construed as constituting an additional warranty. Open Text shall not be liable for technical or editorial errors or omissions contained herein. The information contained herein is subject to change without notice.
+oacollector:
+  imageMetric: "itom-monitoring-oa-metric-collector"
+  imageTagMetric: 24.2.1-4
+  imageDisc: "itom-monitoring-oa-discovery-collector"
+  imageTagDisc: 24.2-55  
+  svcname: localhost:40006
+  port: 40006
+  config:
+    discreplicaCount: 1
+    metricreplicaCount: 1
+    historyreplicaCount: 1
+    metriccollectorname: "oa"
+    discoverycollectorname: "oa"
+
+    multimetricdatatype: "metric"
+    multimetriccollectiontype: "pull"
+    multimetricjobtype: "recurring"
+    multimetricbgjobtype: "background"
+
+    multidiscoverycollectiontype: "pull;pull;pull;pull"
+    multidiscoverydatatype: "discovery;discovery;event;event"
+    multidiscoveryjobtype: "recurring;background;recurring;background"
+    direceiversvc: itom-di-receiver-svc
+    direceiverport: 5050
+    cososubscription: HTTPS
+    desreceiversvc: itom-opsbridge-des-svc
+    desreceiverport: 40009
+    desExternalPort: 30010
+
+jobfetcher:
+  imageTag: null
+  image: "itom-monitoring-job-fetcher"
+  config:
+    messageTopic: oa
+resultprocessor:
+  imageTag: null
+  image: "itom-monitoring-result-processor"
+  config:
+    subscriptionname: result-processor
+    messageTopic: oa
+    defaultHTTPTimeout: 3600
+redis:
+  svcname: cs-redis
+  port: 6380
+  srvbasename: cs-redis
+  passwdkey: redis_pwd
+collectionscheduler:
+  svcname: itom-monitoring-job-scheduler-svc
+  port: 40000
+deployment:
+  rbac:
+    serviceAccount: itom-opsb-oa-collector-sa  
+global:
+  desProtocol:
+  diProtocol:
+  diHostname:
+  diReceiverPort:
+  idm:	
+    integrationUser: 
+    integrationUserKey: 
+    serviceName:
+    internalPort:
+  opsBridge:
+    externalAccessHost: 
+    externalAccessPort: 
+    desExternalPort:
+    proxy:
+      host:
+      port:
+      user:
+      password: 
+      no_proxy: 
+  rbac:
+    serviceAccountCreate: true
+    roleCreate: true
+  nodeSelector: {}
+  busybox:
+    image: itom-busybox
+    imageTag: 1.32.0-006
+  toolsBase:
+    image: itom-tools-base
+    imageTag: 1.1.0-0011
+  securityContext:
+    user: "1999"
+    fsGroup: "1999"
+  persistence:
+    enabled: false
+    configVolumeClaim: 
+    logVolumeClaim: 
+  # If isDemo is true, this will allow use of ephemeral storage and other POC aspects.
+  isDemo: false
+  docker:
+    # set the global.docker.registry and orgName to your internal Docker registry/org
+    registry: localhost:5000
+    orgName: hpeswitom
+    imagePullPolicy: IfNotPresent
+  suiteLabel: Worker
+  suiteLabelValue: label
+  amc:
+    # The location of the OBM server to which the Agent Metric Collector registers itself and from which Operations Agent nodes list is retrieved
+    # OBM server can be external (located outside the cluster) or internal (located inside the cluster)
+    externalOBM: false
+    # OBM server used can be of classic or containerized deployment.
+    # This parameter must be set to false, if the OBM used for AMC discovery service is classic OBM.
+    # Ignored when externalOBM: true
+    containerizedOBM: true
+    # FQDN of OBM
+    # If OBM is distributed 1GW, 1DPS, or if there's a load balancer mention in any one of the gateway or loadbalancer.
+    # This parameter must be set when externalOBM: true
+    # Ignored when externalOBM: false
+    obmHostname:
+    # The OBM server port used by components to access OBM and RTSM.If OBM is configured to be accessed as http, set this parameter to 80
+    # Ignored when externalOBM: false
+    port: 443
+    # The protocol used by components to access OBM and RTSM. If OBM is configured to be accessed http, set this parameter to http.
+    # Ignored when externalOBM: false
+    rtsmProtocol: https
+    # The username used by components to access OBM's RTSM. Provide the 'Agent Metric Collector integration user' that you had created
+    # Ignored when externalOBM: false
+    rtsmUsername:
+    # Externally accessible port on the cluster used by external OBM to communicate with the Data Broker component of Agent Metric Collector
+    # Ignored when externalOBM: false
+    dataBrokerNodePort: 1383
+    # The BBC port used by the OBM server for incoming connections. The Agent Metric Collector uses this port to communicate with OBM. The default port used by OBM is 383, therefore this setting should only be changed in case the default BBC port has been changed on the OBM server.
+    # Ignored when externalOBM: false
+    serverPort: 383
+    # The Agent Metric Collector can connect to this many Operations Agent nodes in parallel during metric collection.
+    # Use one of 5, 10, 20, 25. Note that higher parallel connections would consume more CPU and Memory resources than lower parallel connections.
+    numOfParallelCollections: 25
+    numOfParallelHistoryCollections: 10
+    historyCollectionEnabled: true
+
+  vault:
+    realmList: "RE:365"
+
+  # Global image references for vault
+  vaultRenew:
+    image: kubernetes-vault-renew
+    imageTag: 0.13.0-0031
+  vaultInit:
+    image: kubernetes-vault-init
+    imageTag: 0.13.0-0031
+
+  
+
+  prometheus:
+    deployPrometheusConfig: true      #true = deploy scraping rules (ServiceMonitor, PodMonitor) and alerts (PrometheusRule)
+    deployGrafanaConfig: true         #true = deploy configmaps defining the Grafana dashboards
+    prometheusSelector:               #define the label(s) that Prometheus looks for when discovering rules.
+      prometheus_config: "1"
+    grafanaSelector:                  #define the label(s) that Grafana looks for when discovering dashboards.
+      grafana_dashboard: "1"
+      
+  monitoringService:
+    jobFetcher:
+      imageTag: 
+      image: 
+    resultProcessor:
+      imageTag: 
+      image: 
+      
+resources:
+  limits:
+    cpu: "1"
+    memory: "4096Mi"
+  requests:
+    cpu: "0.2"
+    memory: "256Mi"

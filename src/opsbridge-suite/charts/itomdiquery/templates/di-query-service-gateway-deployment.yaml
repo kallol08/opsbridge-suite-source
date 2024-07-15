@@ -1,0 +1,211 @@
+{{/* # */}}
+{{/* # Copyright 2023 Open Text. */}}
+{{/* # */}}
+{{/* # The only warranties for products and services of Open Text and its affiliates and  */}}
+{{/* # licensors (“Open Text”) are as may be set forth in the express warranty statements  */}}
+{{/* # accompanying such products and services. Nothing herein should be construed as */}}
+{{/* # constituting an additional warranty. Open Text shall not be liable for technical or */}}
+{{/* # editorial errors or omissions contained herein. The information contained herein is  */}}
+{{/* # subject to change without notice. */}}
+{{/* # */}}
+{{/* # Except as specifically indicated otherwise, this document contains confidential  */}}
+{{/* # information and a valid license is required for possession, use or copying. If this work  */}}
+{{/* # is provided to the U.S. Government, consistent with FAR 12.211 and 12.212, Commercial Computer  */}}
+{{/* # Software, Computer Software Documentation, and Technical Data for Commercial Items are licensed to */}}
+{{/* # the U.S. Government under vendor’s standard commercial license. */}}
+{{/* # */}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: itom-di-query-service-gateway
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    deployment.microfocus.com/default-replica-count: "1"
+    deployment.microfocus.com/runlevel: UP
+  labels:
+    app: itom-di-query-service-gateway
+    app.kubernetes.io/name: itom-di-query-service-gateway
+    app.kubernetes.io/managed-by: {{.Release.Name}}
+    app.kubernetes.io/version: {{ .Values.queryServiceGateway.imageTag }}
+    itom.microfocus.com/capability: itom-data-ingestion
+    tier.itom.microfocus.com/backend: backend
+spec:
+  replicas: {{ .Values.itomdiquery.queryServiceGateway.config.replicaCount }}
+  selector:
+    matchLabels:
+      app: itom-di-query-service-gateway
+  template:
+    metadata:
+      labels:
+        app: itom-di-query-service-gateway
+        app.kubernetes.io/name: itom-di-query-service-gateway
+        app.kubernetes.io/managed-by: {{ .Release.Name }}
+        app.kubernetes.io/version: {{ .Values.queryServiceGateway.imageTag }}
+        itom.microfocus.com/capability: itom-data-ingestion
+        tier.itom.microfocus.com/backend: backend
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/di-query-service-gateway-configmap.yaml") . | sha256sum }}
+        {{- if .Values.global.vaultAppRole }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-{{ .Values.global.vaultAppRole }}
+        {{- else }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-default
+        {{- end }}
+        pod.boostport.com/vault-init-container: install
+    spec:
+      serviceAccount: {{ .Values.deployment.rbac.serviceAccount | default "itom-di-query-service-gateway-sa" }}
+      serviceAccountName: {{ .Values.deployment.rbac.serviceAccount | default "itom-di-query-service-gateway-sa" }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: {{ .Values.global.securityContext.user }}
+        runAsGroup: {{ .Values.global.securityContext.fsGroup }}
+        fsGroup: {{ .Values.global.securityContext.fsGroup }}
+        seccompProfile:
+          type: RuntimeDefault
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: "app"
+                      operator: In
+                      values:
+                        - itom-di-query-service-gateway
+                topologyKey: "kubernetes.io/hostname"
+      terminationGracePeriodSeconds: 30
+      initContainers:
+      {{- include "helm-lib.waitForVault" . | nindent 6 }}
+      {{- $certNames := "itom-di-query-service-gateway" -}}
+      {{- include "helm-lib.containers.vaultInit" (dict "certNames" $certNames "Values" .Values) | nindent 6 }}
+      containers:
+      {{- include "helm-lib.containers.vaultRenew" (dict "Values" .Values) | nindent 6 }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+      - name: itom-di-query-service-gateway
+        image: {{ .Values.global.docker.registry }}/{{ .Values.global.docker.orgName }}/{{ .Values.queryServiceGateway.image }}:{{ .Values.queryServiceGateway.imageTag }}
+        {{- if .Values.itomdiquery.probe.startup.enabled }}
+        startupProbe:
+          exec:
+            command:
+            - "/container/bin/startup.sh"
+          initialDelaySeconds: {{ .Values.itomdiquery.probe.startup.initialDelaySeconds }}
+          periodSeconds: {{ .Values.itomdiquery.probe.startup.periodSeconds }}
+          timeoutSeconds: {{ .Values.itomdiquery.probe.startup.timeoutSeconds }}
+          failureThreshold: {{ .Values.itomdiquery.probe.startup.failureThreshold }}
+          successThreshold: {{ .Values.itomdiquery.probe.startup.successThreshold }}
+        {{- end }}
+        {{- if .Values.itomdiquery.probe.liveness.enabled }}
+        livenessProbe:
+          exec:
+            command:
+              - "/container/bin/liveness.sh"
+          initialDelaySeconds: {{ .Values.itomdiquery.probe.liveness.initialDelaySeconds }}
+          periodSeconds: {{ .Values.itomdiquery.probe.liveness.periodSeconds }}
+          timeoutSeconds: {{ .Values.itomdiquery.probe.liveness.timeoutSeconds }}
+          failureThreshold: {{ .Values.itomdiquery.probe.liveness.failureThreshold }}
+          successThreshold: {{ .Values.itomdiquery.probe.liveness.successThreshold }}
+        {{- end }}
+        {{- if .Values.itomdiquery.probe.readiness.enabled }}
+        readinessProbe:
+          exec:
+            command:
+            - "/container/bin/readiness.sh"
+          initialDelaySeconds: {{ .Values.itomdiquery.probe.readiness.initialDelaySeconds }}
+          periodSeconds: {{ .Values.itomdiquery.probe.readiness.periodSeconds }}
+          timeoutSeconds: {{ .Values.itomdiquery.probe.readiness.timeoutSeconds }}
+          failureThreshold: {{ .Values.itomdiquery.probe.readiness.failureThreshold }}
+          successThreshold: {{ .Values.itomdiquery.probe.readiness.successThreshold }}
+        {{- end }}
+        imagePullPolicy: {{ .Values.global.docker.imagePullPolicy }}
+        env:
+        - name: IDM_SERVICE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: itom-di-query-service-gateway-cm
+              key: queryServiceGateway.idmSvc.url
+              optional: false
+        - name: IDM_AUTHORIZED_ROLE
+          valueFrom:
+            configMapKeyRef:
+              name: itom-di-query-service-gateway-cm
+              key: queryServiceGateway.idm.authorizedRole
+        - name: QUERY_SERVICE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: itom-di-query-service-gateway-cm
+              key: queryServiceGateway.queryService.url
+              optional: false
+        - name: VERTICA_DATABASE_HOSTNAME
+          valueFrom:
+            configMapKeyRef:
+              name: itom-di-query-service-gateway-cm
+              key: queryServiceGateway.vertica.hostname
+              optional: false
+        - name: VERTICA_USERNAME
+          valueFrom:
+            configMapKeyRef:
+              name: itom-di-query-service-gateway-cm
+              key: queryServiceGateway.vertica.username
+              optional: false
+        - name: VERTICA_PASSWORD
+          valueFrom:
+            configMapKeyRef:
+              name: itom-di-query-service-gateway-cm
+              key: queryServiceGateway.vertica.password
+              optional: false
+        - name: VERTICA_DATABASE_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: itom-di-query-service-gateway-cm
+              key: queryServiceGateway.vertica.database.name
+              optional: false
+        - name: VERTICA_DATABASE_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: itom-di-query-service-gateway-cm
+              key: queryServiceGateway.vertica.database.port
+              optional: false
+        - name: VERTICA_TLS_ENABLED
+          valueFrom:
+            configMapKeyRef:
+              name: itom-di-query-service-gateway-cm
+              key: queryServiceGateway.vertica.tlsEnabled
+              optional: false
+        - name: QUERY_SERVICE_NAME
+          value: itom-di-query-service
+        - name: QUERY_SERVICE_PORT
+          value: "4000"
+        - name: IDM_SERVICE_NAME
+          value: itom-idm
+        - name: TLS_MIN_VERSION
+          value: {{ include "helm-lib.getTlsMinVersion" (dict "format" "1" "Values" .Values) }}
+        - name: TLS_CIPHERS
+          value: {{ include "helm-lib.getTlsCiphers" . }}
+        - name: QUERY_SERVICE_GATEWAY_CLIENT_AUTH_ENABLE
+          valueFrom:
+            configMapKeyRef:
+              name: itom-di-query-service-gateway-cm
+              key: queryServiceGateway.clientAuthEnabled
+              optional: false
+        - name: QUERY_SERVICE_GATEWAY_REQUEST_TIMEOUT
+          valueFrom:
+            configMapKeyRef:
+              name: itom-di-query-service-gateway-cm
+              key: queryServiceGateway.requestTimeout
+        resources:
+          requests:
+            cpu: {{ .Values.itomdiquery.queryServiceGateway.resources.requests.cpu }}
+            memory: {{ .Values.itomdiquery.queryServiceGateway.resources.requests.memory }}
+          limits:
+            memory: {{ .Values.itomdiquery.queryServiceGateway.resources.limits.memory }}
+            cpu: {{ .Values.itomdiquery.queryServiceGateway.resources.limits.cpu }}
+        volumeMounts:
+        - name: vault-token
+          mountPath: /var/run/secrets/boostport.com
+      volumes:
+      - name: vault-token
+        emptyDir: {}

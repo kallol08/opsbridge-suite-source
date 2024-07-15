@@ -1,0 +1,118 @@
+{{- if  eq (include "restrict.isClient" .) "false" }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: itom-restrict-upgrade
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: itom-restrict-upgrade
+    app.kubernetes.io/managed-by: {{.Release.Name}}
+    app: itom-restrict-upgrade
+  annotations:
+    deployment.microfocus.com/default-replica-count: "1"
+    deployment.microfocus.com/runlevel: UP
+    configmap.reloader.stakater.com/reload: "{{ .Values.global.apiClient.authorizedClientCAs }},service-chart-version"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: itom-restrict-upgrade
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/managed-by: {{ .Release.Name }}
+        app.kubernetes.io/name: itom-restrict-upgrade
+        app.kubernetes.io/version: {{.Values.restrictUpgrade.imageTag }}
+        itom.microfocus.com/capability: opsbridge-suite
+        app: itom-restrict-upgrade
+      annotations:
+        {{- if .Values.global.vaultAppRole }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-{{ .Values.global.vaultAppRole }}
+        {{- else }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-default
+        {{- end }}
+        pod.boostport.com/vault-init-container: install
+    spec:
+      securityContext:
+        runAsUser: {{ .Values.global.securityContext.user }}
+        runAsGroup: {{ .Values.global.securityContext.fsGroup }}
+        fsGroup: {{ .Values.global.securityContext.fsGroup }}
+        supplementalGroups: [{{ .Values.global.securityContext.fsGroup }}]
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      serviceAccountName: {{.Values.deployment.rbac.serviceAccount}}
+      initContainers:
+        {{- $idmHost := (coalesce (include "helm-lib.getInternalIdmHost" .) .Values.global.idm.serviceName "itom-idm-svc") -}}
+        {{- $idmPort := (coalesce (include "helm-lib.getInternalIdmPort" .) .Values.global.idm.internalPort "18443") -}}
+        {{- include "helm-lib.waitFor" (dict "service" $idmHost "port" $idmPort "Values" .Values) | nindent 6 }}
+        {{- include "helm-lib.containers.vaultInit" (dict "certNames" (printf "Common_Name:%s,Additional_SAN:%s" .Values.global.externalAccessHost "itom-restrict-upgrade-svc") "Values" .Values) | nindent 6 }}
+      containers:
+        - name: itom-restrict-upgrade
+          image: {{ .Values.global.docker.registry }}/{{ .Values.global.docker.orgName }}/{{ .Values.restrictUpgrade.image }}:{{ .Values.restrictUpgrade.imageTag }}
+          imagePullPolicy: {{ .Values.global.docker.imagePullPolicy }}
+          securityContext:
+            runAsUser: {{ .Values.global.securityContext.user }}
+            runAsGroup: {{ .Values.global.securityContext.fsGroup }}
+            allowPrivilegeEscalation: false
+            privileged: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+              - ALL
+          env:
+            - name: IS_CLIENT
+              value: {{ include "restrict.isClient" . | quote}}
+            - name: PORT
+              value: {{ .Values.itomRestrictUpgrade.port | quote}}
+            - name: ENDPOINT
+              value: {{.Values.itomRestrictUpgrade.endPoint}}
+            - name: IDM_HOST
+              value: {{ (coalesce .Values.global.idm.serviceName "itom-idm-svc")}}
+            - name: IDM_PORT
+              value: {{ (coalesce .Values.global.idm.internalPort 18443) | quote}}
+            - name: Tenant
+              value: {{ (coalesce .Values.global.idm.tenant "Provider") }}
+            - name: IDM_USER
+              value: {{ (coalesce .Values.global.idm.integrationUser "integration_admin") }}
+            - name: IDM_USER_KEY
+              value: {{ (coalesce .Values.global.idm.integrationUserKey "idm_integration_admin_password") }}
+            - name: MTLS
+              value: "false"
+          resources:
+            requests:
+              cpu: 10m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 192Mi
+          volumeMounts:
+            - mountPath: /var/run/secrets/boostport.com
+              name: vault-token
+            - mountPath: /var/run/secrets/restrict-upgrade
+              name: cm-client-cert-volume
+            - mountPath: /etc/cm
+              name: cm-json-volume
+
+              
+      restartPolicy: Always
+      volumes:
+        - name: vault-token
+          emptyDir: {}
+        - name: cm-client-cert-volume
+          projected:
+            sources:      
+              - configMap:
+                  name: {{ .Values.global.apiClient.authorizedClientCAs | quote }}      
+        - name: cm-json-volume
+          configMap:
+            name: service-chart-version
+            defaultMode: 0440
+      
+{{- end }}
+

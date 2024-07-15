@@ -1,0 +1,1308 @@
+{{/*#*/}}
+{{/*# Licensed to the Apache Software Foundation (ASF) under one*/}}
+{{/*# or more contributor license agreements.  See the NOTICE file*/}}
+{{/*# distributed with this work for additional information*/}}
+{{/*# regarding copyright ownership.  The ASF licenses this file*/}}
+{{/*# to you under the Apache License, Version 2.0 (the*/}}
+{{/*# "License"); you may not use this file except in compliance*/}}
+{{/*# with the License.  You may obtain a copy of the License at*/}}
+{{/*#*/}}
+{{/*#   http://www.apache.org/licenses/LICENSE-2.0*/}}
+{{/*#*/}}
+{{/*# Unless required by applicable law or agreed to in writing,*/}}
+{{/*# software distributed under the License is distributed on an*/}}
+{{/*# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY*/}}
+{{/*# KIND, either express or implied.  See the License for the*/}}
+{{/*# specific language governing permissions and limitations*/}}
+{{/*# under the License.*/}}
+{{/*#*/}}
+{{ if .Values.global.prometheus.deployGrafanaConfig }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: itom-monitoring-hso-sample-metric-injector
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: itom-monitoring
+    {{- toYaml .Values.global.prometheus.grafanaSelector | nindent 4 }}
+  annotations:
+    {{- include "dashboards.annotation.folder" . | nindent 4 }}
+data:
+  hso-sample-metric-injector.json: |
+    {{`{
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": "-- Grafana --",
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "target": {
+              "limit": 100,
+              "matchAny": false,
+              "tags": [],
+              "type": "dashboard"
+            },
+            "type": "dashboard"
+          }
+        ]
+      },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 0,
+      "id": 129,
+      "iteration": 1650456511109,
+      "links": [
+        {
+          "asDropdown": false,
+          "icon": "dashboard",
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "targetBlank": false,
+          "title": "Monitoring Service overview",
+          "tooltip": "",
+          "type": "link",
+          "url": "/d/hso-sample-data-injector-monitoring-overview/data-overview-dashboard?orgId=1"
+        },
+        {
+          "asDropdown": false,
+          "icon": "dashboard",
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "targetBlank": true,
+          "title": "Compute Resource Dashboard",
+          "tooltip": "",
+          "type": "link",
+          "url": "/d/6581e46e4e5c7ba40a07646395ef7b23/kubernetes-compute-resources-pod?orgId=1&refresh=10s&var-datasource=default&var-cluster=&var-namespace=$namespace&var-pod=$Pod"
+        }
+      ],
+      "liveNow": false,
+      "panels": [
+        {
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 0
+          },
+          "id": 10,
+          "panels": [],
+          "title": "Pod Overview",
+          "type": "row"
+        },
+        {
+          "description": "This panel shows number of currently running containers in the $name Pod(s). The containers include: $name, job fetcher and result processor.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [
+                {
+                  "options": {
+                    "match": "null",
+                    "result": {
+                      "text": "N/A"
+                    }
+                  },
+                  "type": "special"
+                }
+              ],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              },
+              "unit": "none"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 3,
+            "w": 3,
+            "x": 0,
+            "y": 1
+          },
+          "id": 12,
+          "links": [],
+          "maxDataPoints": 100,
+          "options": {
+            "colorMode": "none",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "horizontal",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "text": {},
+            "textMode": "auto"
+          },
+          "pluginVersion": "8.3.4",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "PBFA97CFB590B2093"
+              },
+              "exemplar": false,
+              "expr": "count(up{pod=~\"$Pod\"} == 1)",
+              "format": "time_series",
+              "hide": false,
+              "instant": true,
+              "interval": "",
+              "intervalFactor": 1,
+              "legendFormat": "",
+              "refId": "A"
+            }
+          ],
+          "title": "# Running Containers",
+          "type": "stat"
+        },
+        {
+          "description": "This Panel gives the current average CPU being used by all the running containers for the $name pod(s).",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "decimals": 2,
+              "mappings": [
+                {
+                  "id": 0,
+                  "op": "=",
+                  "text": "N/A",
+                  "type": 1,
+                  "value": "null"
+                }
+              ],
+              "max": 100,
+              "min": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#37872D",
+                    "value": null
+                  },
+                  {
+                    "color": "#FF9830",
+                    "value": 65
+                  },
+                  {
+                    "color": "rgba(245, 54, 54, 0.9)",
+                    "value": 90
+                  }
+                ]
+              },
+              "unit": "percent"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 7,
+            "w": 10,
+            "x": 3,
+            "y": 1
+          },
+          "id": 16,
+          "links": [],
+          "options": {
+            "orientation": "vertical",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "showThresholdLabels": false,
+            "showThresholdMarkers": true
+          },
+          "pluginVersion": "8.3.4",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "PBFA97CFB590B2093"
+              },
+              "exemplar": true,
+              "expr": "sum(node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate{pod=~\"$Pod\",container=~\"$Container\"}) by (container) / sum(cluster:namespace:pod_cpu:active:kube_pod_container_resource_limits{pod=~\"$Pod\",container=~\"$Container\",container!=\"kubernetes-vault-renew\"}) by (container) * 100",
+              "hide": false,
+              "instant": false,
+              "interval": "10s",
+              "intervalFactor": 1,
+              "legendFormat": "{{container }}",
+              "refId": "A",
+              "step": 10
+            }
+          ],
+          "title": "CPU usage",
+          "type": "gauge"
+        },
+        {
+          "description": "This Panel gives the current memory being used by all the running containers of the $name pod(s).",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [
+                {
+                  "id": 0,
+                  "op": "=",
+                  "text": "N/A",
+                  "type": 1,
+                  "value": "null"
+                }
+              ],
+              "max": 100,
+              "min": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#37872D",
+                    "value": null
+                  },
+                  {
+                    "color": "rgba(237, 129, 40, 0.89)",
+                    "value": 75
+                  },
+                  {
+                    "color": "#C4162A",
+                    "value": 90
+                  }
+                ]
+              },
+              "unit": "percent"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 7,
+            "w": 11,
+            "x": 13,
+            "y": 1
+          },
+          "id": 18,
+          "links": [],
+          "options": {
+            "orientation": "vertical",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "showThresholdLabels": false,
+            "showThresholdMarkers": true
+          },
+          "pluginVersion": "8.3.4",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "PBFA97CFB590B2093"
+              },
+              "exemplar": true,
+              "expr": "sum (container_memory_working_set_bytes{pod=~\"$Pod\",container=~\"$Container\",container!=\"kubernetes-vault-renew\"})  by (container) / sum (container_spec_memory_limit_bytes{pod=~\"$Pod\",container=~\"$Container\",container!=\"kubernetes-vault-renew\"})  by (container) * 100",
+              "interval": "10s",
+              "intervalFactor": 1,
+              "legendFormat": "{{container}}",
+              "refId": "A",
+              "step": 10
+            }
+          ],
+          "title": "Memory usage",
+          "type": "gauge"
+        },
+        {
+          "description": "This panel shows the percentage of running containers in the $name Pod(s). The containers include: $name, job fetcher and result processor.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [
+                {
+                  "options": {
+                    "match": "null",
+                    "result": {
+                      "text": "N/A"
+                    }
+                  },
+                  "type": "special"
+                }
+              ],
+              "max": 100,
+              "min": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#C4162A",
+                    "value": null
+                  },
+                  {
+                    "color": "rgba(237, 129, 40, 0.89)",
+                    "value": 60
+                  },
+                  {
+                    "color": "dark-green",
+                    "value": 90
+                  }
+                ]
+              },
+              "unit": "percent"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 3,
+            "x": 0,
+            "y": 4
+          },
+          "id": 14,
+          "links": [],
+          "maxDataPoints": 100,
+          "options": {
+            "orientation": "horizontal",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "showThresholdLabels": false,
+            "showThresholdMarkers": true,
+            "text": {}
+          },
+          "pluginVersion": "8.3.4",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "PBFA97CFB590B2093"
+              },
+              "exemplar": true,
+              "expr": "100 * count(up{pod=~\"$Pod\"} == 1) / count(up{pod=~\"$Pod\"})",
+              "format": "time_series",
+              "instant": false,
+              "interval": "",
+              "intervalFactor": 1,
+              "legendFormat": "",
+              "refId": "A"
+            }
+          ],
+          "title": "% Running Containers",
+          "type": "gauge"
+        },
+        {
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 8
+          },
+          "id": 8,
+          "panels": [],
+          "title": "Pod custom metrics",
+          "type": "row"
+        },
+        {
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 3,
+            "x": 0,
+            "y": 9
+          },
+          "id": 26,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "text": {},
+            "textMode": "auto"
+          },
+          "pluginVersion": "8.3.4",
+          "targets": [
+            {
+              "exemplar": true,
+              "expr": "count(job_total{collectorType=\"hsosampledatainjector\"})",
+              "interval": "",
+              "legendFormat": "{{pod}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Jobs Started by job Fetcher",
+          "type": "stat"
+        },
+        {
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              },
+              "unit": "s"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 9,
+            "w": 7,
+            "x": 3,
+            "y": 9
+          },
+          "id": 4,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "pluginVersion": "8.3.4",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "PBFA97CFB590B2093"
+              },
+              "exemplar": true,
+              "expr": "collection_duration_seconds_sum{collectorType=\"hsosampledatainjector\",jobType=\"metric\",jobName=~\"$Configuration\"}/collection_duration_seconds_count{collectorType=\"hsosampledatainjector\",jobType=\"metric\",jobName=\"$Configuration\"}",
+              "hide": false,
+              "instant": false,
+              "interval": "",
+              "intervalFactor": 1,
+              "legendFormat": "{{jobName}}",
+              "refId": "B"
+            }
+          ],
+          "title": "collection duration",
+          "type": "stat"
+        },
+        {
+          "description": "Tottal number of metrics collected aggregated by class",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                }
+              },
+              "mappings": []
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 9,
+            "w": 7,
+            "x": 10,
+            "y": 9
+          },
+          "id": 30,
+          "options": {
+            "displayLabels": [
+              "name"
+            ],
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "values": [
+                "value"
+              ]
+            },
+            "pieType": "pie",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "tooltip": {
+              "mode": "single"
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "PBFA97CFB590B2093"
+              },
+              "exemplar": true,
+              "expr": "sum(metrics_count_total{collectorType=\"hsosampledatainjector\",jobName=~\"$Configuration\"}) by (class)",
+              "interval": "",
+              "legendFormat": "{{class}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Total number of metrics collected ",
+          "type": "piechart"
+        },
+        {
+          "description": "Requests Processed by Result Processor in the given interval",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "spanNulls": true,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              },
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 9,
+            "w": 7,
+            "x": 17,
+            "y": 9
+          },
+          "id": 28,
+          "options": {
+            "legend": {
+              "calcs": [
+                "mean",
+                "lastNotNull",
+                "max"
+              ],
+              "displayMode": "table",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "single"
+            }
+          },
+          "pluginVersion": "8.3.4",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "PBFA97CFB590B2093"
+              },
+              "exemplar": true,
+              "expr": "requests_processed_total{pod=~\"itom-monitoring-hso-sample-metric-injector.*\"}",
+              "hide": false,
+              "instant": false,
+              "interval": "",
+              "legendFormat": "{{pod}} - {{requestType}}-{{status}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Requests Processed by Result Processor",
+          "type": "timeseries"
+        },
+        {
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 5,
+            "w": 3,
+            "x": 0,
+            "y": 13
+          },
+          "id": 2,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "text": {},
+            "textMode": "auto"
+          },
+          "pluginVersion": "8.3.4",
+          "targets": [
+            {
+              "exemplar": true,
+              "expr": "count(collection_active_total{collectorType=\"hsosampledatainjector\",jobType=\"discovery\"})",
+              "interval": "",
+              "legendFormat": "discovery",
+              "refId": "A"
+            },
+            {
+              "exemplar": true,
+              "expr": "count(collection_active_total{collectorType=\"hsosampledatainjector\",jobType=\"metric\"})",
+              "hide": false,
+              "interval": "",
+              "legendFormat": "metric",
+              "refId": "B"
+            }
+          ],
+          "title": "active collections",
+          "type": "stat"
+        },
+        {
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 18
+          },
+          "id": 20,
+          "panels": [],
+          "title": "Pod details",
+          "type": "row"
+        },
+        {
+          "aliasColors": {},
+          "bars": false,
+          "dashLength": 10,
+          "dashes": false,
+          "decimals": 3,
+          "description": "This Panel gives the CPU utilization of the $name pod/s\n",
+          "fieldConfig": {
+            "defaults": {
+              "links": []
+            },
+            "overrides": []
+          },
+          "fill": 1,
+          "fillGradient": 0,
+          "gridPos": {
+            "h": 10,
+            "w": 12,
+            "x": 0,
+            "y": 19
+          },
+          "hiddenSeries": false,
+          "id": 22,
+          "interval": "",
+          "legend": {
+            "alignAsTable": false,
+            "avg": false,
+            "current": false,
+            "hideZero": false,
+            "max": false,
+            "min": false,
+            "rightSide": false,
+            "show": true,
+            "total": false,
+            "values": false
+          },
+          "lines": true,
+          "linewidth": 1,
+          "nullPointMode": "null as zero",
+          "options": {
+            "alertThreshold": true
+          },
+          "percentage": false,
+          "pluginVersion": "8.3.4",
+          "pointradius": 2,
+          "points": false,
+          "renderer": "flot",
+          "seriesOverrides": [],
+          "spaceLength": 10,
+          "stack": false,
+          "steppedLine": false,
+          "targets": [
+            {
+              "exemplar": true,
+              "expr": "sum(rate(container_cpu_usage_seconds_total{pod=~\"$Pod\", namespace=~\"$namespace\"}[1m])) by (pod)",
+              "interval": "10s",
+              "intervalFactor": 1,
+              "legendFormat": "{{pod}}",
+              "refId": "A"
+            }
+          ],
+          "thresholds": [],
+          "timeRegions": [],
+          "title": "$name CPU usage : ($Pod)",
+          "tooltip": {
+            "shared": true,
+            "sort": 0,
+            "value_type": "individual"
+          },
+          "type": "graph",
+          "xaxis": {
+            "mode": "time",
+            "show": true,
+            "values": []
+          },
+          "yaxes": [
+            {
+              "decimals": 3,
+              "format": "cores",
+              "label": "",
+              "logBase": 1,
+              "show": true
+            },
+            {
+              "format": "short",
+              "logBase": 1,
+              "min": "0",
+              "show": false
+            }
+          ],
+          "yaxis": {
+            "align": false
+          }
+        },
+        {
+          "aliasColors": {},
+          "bars": false,
+          "dashLength": 10,
+          "dashes": false,
+          "decimals": 3,
+          "description": "This Panel gives the memory utilization of the $name pod/s\n",
+          "fieldConfig": {
+            "defaults": {
+              "links": []
+            },
+            "overrides": []
+          },
+          "fill": 1,
+          "fillGradient": 0,
+          "gridPos": {
+            "h": 10,
+            "w": 12,
+            "x": 12,
+            "y": 19
+          },
+          "hiddenSeries": false,
+          "id": 24,
+          "interval": "",
+          "legend": {
+            "alignAsTable": false,
+            "avg": false,
+            "current": false,
+            "max": false,
+            "min": false,
+            "rightSide": false,
+            "show": true,
+            "total": false,
+            "values": false
+          },
+          "lines": true,
+          "linewidth": 1,
+          "nullPointMode": "null as zero",
+          "options": {
+            "alertThreshold": true
+          },
+          "percentage": false,
+          "pluginVersion": "8.3.4",
+          "pointradius": 2,
+          "points": false,
+          "renderer": "flot",
+          "seriesOverrides": [],
+          "spaceLength": 10,
+          "stack": false,
+          "steppedLine": false,
+          "targets": [
+            {
+              "expr": "sum (container_memory_working_set_bytes{pod=~\"$Pod\",container=~\"$Container\",container!=\"kubernetes-vault-renew\"})  by (container) / sum (container_spec_memory_limit_bytes{pod=~\"$Pod\",container=~\"$Container\",container!=\"kubernetes-vault-renew\"})  by (container) * 100",
+              "interval": "10s",
+              "intervalFactor": 1,
+              "legendFormat": "{{pod}}",
+              "refId": "A"
+            }
+          ],
+          "thresholds": [],
+          "timeRegions": [],
+          "title": "$name memory usage : ($Pod)",
+          "tooltip": {
+            "shared": true,
+            "sort": 0,
+            "value_type": "individual"
+          },
+          "type": "graph",
+          "xaxis": {
+            "mode": "time",
+            "show": true,
+            "values": []
+          },
+          "yaxes": [
+            {
+              "decimals": 3,
+              "format": "Bps",
+              "label": "",
+              "logBase": 1,
+              "show": true
+            },
+            {
+              "format": "short",
+              "logBase": 1,
+              "min": "0",
+              "show": false
+            }
+          ],
+          "yaxis": {
+            "align": false
+          }
+        },
+        {
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 0,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": " "
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "fixedColor": "red",
+                      "mode": "fixed"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "gridPos": {
+            "h": 10,
+            "w": 12,
+            "x": 0,
+            "y": 29
+          },
+          "id": 32,
+          "options": {
+            "legend": {
+              "calcs": [],
+              "displayMode": "list",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "single"
+            }
+          },
+          "pluginVersion": "8.1.2",
+          "targets": [
+            {
+              "exemplar": true,
+              "expr": "increase(kube_pod_container_status_restarts_total{pod=~\"$Pod\", container=~\"$Container\", container!~\"kubernetes-vault-renew\", namespace=~\"$namespace\"}[5m])",
+              "format": "time_series",
+              "instant": false,
+              "interval": "",
+              "legendFormat": "{{container}} {{pod}}",
+              "refId": "A"
+            },
+            {
+              "exemplar": true,
+              "expr": "kube_pod_container_status_last_terminated_reason{pod=~\"$Pod\", container=~\"$Container\", container!~\"kubernetes-vault-renew\", namespace=~\"$namespace\"}",
+              "hide": false,
+              "interval": "",
+              "legendFormat": "Restart Reason - {{reason}}",
+              "refId": "B"
+            }
+          ],
+          "title": "Pod Restart Timeline",
+          "transformations": [],
+          "type": "timeseries"
+        },
+        {
+          "description": "Total restart count observed",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "custom": {
+                "align": "left",
+                "displayMode": "auto",
+                "filterable": true,
+                "minWidth": 50
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 10,
+            "w": 12,
+            "x": 12,
+            "y": 29
+          },
+          "id": 34,
+          "options": {
+            "footer": {
+              "fields": "",
+              "reducer": [
+                "sum"
+              ],
+              "show": false
+            },
+            "frameIndex": 0,
+            "showHeader": true,
+            "sortBy": [
+              {
+                "desc": true,
+                "displayName": "restart count"
+              }
+            ]
+          },
+          "pluginVersion": "8.3.4",
+          "targets": [
+            {
+              "exemplar": true,
+              "expr": "kube_pod_container_status_restarts_total{pod=~\"$Pod\", container=~\"$Container\", container!~\"kubernetes-vault-renew\", namespace=~\"$namespace\"}",
+              "format": "table",
+              "instant": false,
+              "interval": "",
+              "legendFormat": "{{container}} {{pod}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Pod Restart Information",
+          "transformations": [
+            {
+              "id": "groupBy",
+              "options": {
+                "fields": {
+                  "Value": {
+                    "aggregations": [
+                      "lastNotNull"
+                    ],
+                    "operation": "aggregate"
+                  },
+                  "container": {
+                    "aggregations": [],
+                    "operation": "groupby"
+                  },
+                  "pod": {
+                    "aggregations": [],
+                    "operation": "groupby"
+                  }
+                }
+              }
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {},
+                "indexByName": {},
+                "renameByName": {
+                  "Value (lastNotNull)": "Total Restart Count"
+                }
+              }
+            }
+          ],
+          "type": "table"
+        }
+      ],
+      "schemaVersion": 34,
+      "style": "dark",
+      "tags": [],`}}
+      "templating": {
+        "list": [
+          {
+            "current": {
+              "selected": false,
+              "text": "All",
+              "value": "$__all"
+            },
+            "definition": "label_values(kube_pod_info{pod=~\"itom-monitoring-hso-sample-metric-injector.*\", namespace=~\"$namespace\"},pod) ",
+            "hide": 0,
+            "includeAll": true,
+            "label": "Pod",
+            "multi": false,
+            "name": "Pod",
+            "options": [],
+            "query": {
+              "query": "label_values(kube_pod_info{pod=~\"itom-monitoring-hso-sample-metric-injector.*\", namespace=~\"$namespace\"},pod) ",
+              "refId": "StandardVariableQuery"
+            },
+            "refresh": 2,
+            "regex": "",
+            "skipUrlSync": false,
+            "sort": 0,
+            "type": "query"
+          },
+          {
+            "current": {
+              "selected": false,
+              "text": "collection-service",
+              "value": "collection-service"
+            },
+            "definition": "label_values(kube_pod_container_info{pod=~\"itom-monitoring-admin.*\"},namespace) ",
+            "hide": 2,
+            "includeAll": false,
+            "multi": false,
+            "name": "namespace",
+            "options": [],
+            "query": {
+              "query": "label_values(kube_pod_container_info{pod=~\"itom-monitoring-admin.*\"},namespace) ",
+              "refId": "StandardVariableQuery"
+            },
+            "refresh": 1,
+            "regex": "",
+            "skipUrlSync": false,
+            "sort": 0,
+            "type": "query"
+          },
+          {
+            "hide": 2,
+            "name": "name",
+            "query": "hso sample metric injector",
+            "skipUrlSync": false,
+            "type": "constant"
+          },
+          {
+            "current": {
+              "selected": true,
+              "text": [
+                "All"
+              ],
+              "value": [
+                "$__all"
+              ]
+            },
+            "definition": "label_values(kube_pod_container_info{pod=~\"$Pod\",namespace=~\"$namespace\"},container) ",
+            "hide": 0,
+            "includeAll": true,
+            "multi": true,
+            "name": "Container",
+            "options": [],
+            "query": {
+              "query": "label_values(kube_pod_container_info{pod=~\"$Pod\",namespace=~\"$namespace\"},container) ",
+              "refId": "StandardVariableQuery"
+            },
+            "refresh": 1,
+            "regex": "",
+            "skipUrlSync": false,
+            "sort": 1,
+            "type": "query"
+          },
+          {
+            "current": {
+              "selected": false,
+              "text": "All",
+              "value": "$__all"
+            },
+            "definition": "label_values(job_discovery_resource_total{collectorType=\"hsosampledatainjector\"},jobName) ",
+            "hide": 0,
+            "includeAll": true,
+            "label": "Configuration",
+            "multi": false,
+            "name": "Configuration",
+            "options": [],
+            "query": {
+              "query": "label_values(job_discovery_resource_total{collectorType=\"hsosampledatainjector\"},jobName) ",
+              "refId": "StandardVariableQuery"
+            },
+            "refresh": 2,
+            "regex": "",
+            "skipUrlSync": false,
+            "sort": 0,
+            "type": "query"
+          }
+        ]
+      },
+      "time": {
+        "from": "now-1h",
+        "to": "now"
+      },
+      "timepicker": {},
+      "timezone": "browser",
+      "title": "HSO Sample Metrics Injector",
+      "uid": "hsosamplemetric",
+      "version": 3,
+      "weekStart": ""
+    }
+{{ end }}

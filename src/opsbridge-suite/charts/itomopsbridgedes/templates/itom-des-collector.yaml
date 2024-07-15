@@ -1,0 +1,270 @@
+{{/*# Copyright 2023 Open Text.*/}}
+
+{{/*# The only warranties for products and services of Open Text and its affiliates*/}}
+{{/*# and licensors ("Open Text") are as may be set forth in the express warranty*/}}
+{{/*# statements accompanying such products and services. Nothing herein should be*/}}
+{{/*# construed as constituting an additional warranty. Open Text shall not be*/}}
+{{/*# liable for technical or editorial errors or omissions contained herein. The*/}}
+{{/*# information contained herein is subject to change without notice.*/}}
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    configmap.reloader.stakater.com/reload: api-client-ca-certificates,opsb-ca-certificate
+    deployment.microfocus.com/default-replica-count: "1"
+    deployment.microfocus.com/runlevel: UP
+  name: itom-opsbridge-data-enrichment-service
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: itom-opsbridge-data-enrichment-service-app
+spec:
+  replicas: {{ .Values.des.config.replicaCount }}
+  selector:
+    matchLabels:
+      app: itom-opsbridge-data-enrichment-service-app
+  template:
+    metadata:
+      labels:
+        app: itom-opsbridge-data-enrichment-service-app
+        service: itom-opsbridge-des-svc
+        app.kubernetes.io/name: itom-opsbridge-data-enrichment-service
+        app.kubernetes.io/managed-by: {{.Release.Name}}
+        app.kubernetes.io/version: {{ .Values.des.imageTag }}
+        itom.microfocus.com/capability: HyperscaleObservability
+        tier.itom.microfocus.com/backend: backend
+        itom.microfocus.com/description: Data_Enrichment_Service
+      annotations:
+        {{- if .Values.global.vaultAppRole }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-{{ .Values.global.vaultAppRole }}
+        {{- else }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-default
+        {{- end }}
+        pod.boostport.com/vault-init-container: install
+        prometheus.io/port: '8080'
+        prometheus.io/scrape: 'true'
+    spec:
+      serviceAccountName: {{ .Values.deployment.rbac.serviceAccount }}
+      securityContext:
+        runAsUser: {{ .Values.global.securityContext.user }}
+        runAsGroup: {{ .Values.global.securityContext.fsGroup }}
+        fsGroup: {{ .Values.global.securityContext.fsGroup }}
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        {{- include "helm-lib.waitFor" ( dict "service" "cs-redis" "port" "6380" "Values" .Values) | nindent 8 }}
+        {{- include "helm-lib.waitFor" ( dict "service" (.Values.des.config.resourceBundlerSvc) "port" (.Values.des.config.resourceBundlerPort) "Values" .Values) | nindent 8 }}
+        {{- $certNames := printf "Common_Name:%s,Additional_SAN:itom-opsbridge-des-svc,Secret:itom-opsbridge-des-metrics-client,UpdateSecret:true,File_Name:server" .Values.global.externalAccessHost -}}
+        {{- include "helm-lib.containers.vaultInit" (dict "containerName" "install" "certNames" $certNames "Values" .Values) | nindent 8 }}
+      containers:
+        {{- include "helm-lib.containers.vaultRenew" (dict "containerName" "kubernetes-vault-renew" "Values" .Values) | nindent 8 }}
+        - name: itom-opsbridge-data-enrichment-service
+          image: {{ .Values.global.docker.registry }}/{{ .Values.global.docker.orgName }}/{{ .Values.des.image }}:{{ .Values.des.imageTag }}
+          imagePullPolicy: {{ .Values.global.docker.imagePullPolicy }}
+          securityContext:
+            runAsUser: {{ .Values.global.securityContext.user }}
+            runAsGroup: {{ .Values.global.securityContext.fsGroup }}          
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+              - ALL
+          livenessProbe:
+            exec:
+              command:
+              - curl
+              - https://localhost:40009/v1/itomdes/health
+              - --insecure
+              - --key
+              - /var/run/secrets/boostport.com/server.key
+              - --cert
+              - /var/run/secrets/boostport.com/server.crt
+            failureThreshold: 3
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            successThreshold: 1
+            timeoutSeconds: 1   
+          readinessProbe:
+            exec:
+              command:
+              - curl
+              - https://localhost:40009/v1/itomdes/health
+              - --insecure
+              - --key
+              - /var/run/secrets/boostport.com/server.key
+              - --cert
+              - /var/run/secrets/boostport.com/server.crt
+            failureThreshold: 3
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            successThreshold: 1
+            timeoutSeconds: 1
+          startupProbe:
+            exec:
+              command:
+              - curl
+              - https://localhost:40009/v1/itomdes/health
+              - --insecure
+              - --key
+              - /var/run/secrets/boostport.com/server.key
+              - --cert
+              - /var/run/secrets/boostport.com/server.crt
+            failureThreshold: 30
+            initialDelaySeconds: 10                       
+          ports:
+          - containerPort: 40009
+            name: mdes
+            protocol: TCP
+          - containerPort: 8080
+            name: prometheus-mdes
+            protocol: TCP
+          resources:
+            limits:
+              cpu: 2
+              memory: 1Gi
+            requests:
+              cpu: 100m
+              memory: 200Mi
+          volumeMounts:
+            - name: tmp-storage
+              mountPath: /tmp
+            - name: vault-token
+              mountPath: /var/run/secrets/boostport.com
+            - name: des-log-volume
+              mountPath: /logs
+              subPath: cloud-monitoring/des/
+            - name: secret-volume
+              mountPath: /certs/ssl/ca
+            - name: certs-volume 
+              mountPath: /certs/ssl/client
+            - name: conf
+              mountPath: /config 
+            - name: des-conf-volume 
+              mountPath: /conf/rules
+              subPath: cloud-monitoring/des/
+          env:
+          - name: "STATIC_FILES_SERVER_URL"
+            value: https://{{ .Values.des.config.resourceBundlerSvc }}:{{ .Values.des.config.resourceBundlerPort }}
+          - name: SERVER_CONNECTION_LIMIT
+            value: {{ .Values.des.config.serverConnectionLimit | quote }}
+          - name: CLIENT_CONNECTION_LIMIT
+            value: {{ .Values.des.config.clientConnectionLimit | quote }}
+          - name: REDIS_CONN_TIMEOUT_MS
+            value: {{ .Values.des.config.redisConnTimeOutMs | quote }}
+          - name: REDIS_MAX_IDLE_CONN
+            value: {{ .Values.des.config.redisMaxIdleConn | quote }}
+          - name: REDIS_POOL_SIZE
+            value: {{ .Values.des.config.redisPoolSize | quote }}
+          - name: REDIS_POOL_TIMEOUT
+            value: {{ .Values.des.config.redisPoolTimeout | quote }}
+          - name: REDIS_IDLE_TIMEOUT
+            value: {{ .Values.des.config.redisIdleTimeout | quote }}
+          - name: "PROMETHEUS_METRICS_PORT"
+            value: "8080"
+          - name: "DI_SERVER_URL"
+            value: {{ .Values.global.diProtocol | default "https" }}://{{ include "helm-lib.getDiReceiverHost" . | default .Values.des.config.diReceiverSvc  }}:{{ include "helm-lib.getDiReceiverPort" . | default .Values.des.config.diReceiverPort }}/itomdi/receiver
+          - name: CACHE_CLEAN_UP_JOB_RUNNING_INTERVAL_IN_MINUTES
+            value: {{ .Values.des.config.cacheCleanUpJobRunningIntervalInMinutes | quote }}
+          - name: CACHE_CLEAN_UP_INTERVAL_IN_MINUTES
+            value: {{ .Values.des.config.cacheCleanUpIntervalInMinutes | quote }}
+          - name: REDIS_CLEAN_UP_JOB_RUNNING_INTERVAL_IN_MINUTES
+            value: {{ .Values.des.config.redisCleanUpJobRunningIntervalInMinutes | quote }}
+          - name: REDIS_CLEAN_UP_INTERVAL_IN_MINUTES
+            value: {{ .Values.des.config.redisCleanUpIntervalInMinutes | quote }}
+          - name: REDIS_CHUNK_SIZE
+            value: {{ .Values.des.config.redisChunkSize | quote }}
+          - name: WORKERS_PER_REQUEST
+            value: {{ .Values.des.config.workersPerRequest | quote }}
+          - name: "CACHE_MAX_SIZE"
+            value: {{ .Values.des.config.cacheMaxSize | quote }}
+          - name: "IN_REQ_THROTTLE_LIMIT_PER_SEC"
+            value: {{ .Values.des.config.reqthrottlelimit | quote }}
+          - name: "ENABLE_ENRICHMENT"
+            value: {{ .Values.des.enableEnrichment | quote }}
+          {{- if .Values.des.enableEnrichment }}
+          - name: "ENABLE_DENYLIST_PREFIX"
+            value: {{ .Values.des.enrichmentDenylistPrefix | quote }}
+          - name: "ENABLE_ALLOWLIST_PREFIX"
+            value: {{ .Values.des.enrichmentAllowlistPrefix | quote }}
+          {{- end }}
+          {{- if .Values.des.config.skipVerify }}
+          - name: "SKIP_VERIFY"
+            value: {{ .Values.des.config.skipVerify | quote }}
+          {{- end }}
+          {{- if .Values.des.config.httpProxy }}
+          - name: "HTTP_PROXY"
+            value: {{ .Values.des.config.httpProxy }}
+          {{- end }}
+          {{- if .Values.des.config.httpsProxy }}
+          - name: "HTTPS_PROXY"
+            value: {{ .Values.des.config.httpsProxy }}
+          {{- end }}
+          {{- if .Values.des.config.noProxy }}
+          - name: "NO_PROXY"
+            value: {{ .Values.des.config.noProxy }}
+          {{- end }}
+          - name: "DEFAULT_HTTP_TIMEOUT"
+            value: {{ .Values.des.config.defaultHTTPTimeout | quote }}
+          - name: "REDIS_URL"
+            value: {{ .Values.redis.svcname }}:{{ .Values.redis.port }}
+          - name: "REDIS_SRV_BASE_NAME"
+            value: {{ .Values.redis.srvbasename }}
+          - name: "REDIS_PWD_KEY"
+            value: {{ .Values.redis.passwdkey }}
+          - name: "ENABLE_CI_ENRICHMENT"
+            value: {{ .Values.des.enableCIEnrichment | quote }}
+          - name: "TAG_INDEX_KEY"
+            value: {{ .Values.des.indexKey | quote }}
+          - name: "CDF_NAMESPACE"
+            value: {{ .Release.Namespace | quote }}
+          - name: "VAULT_SECRET_DIR"
+            value: /var/run/secrets/boostport.com
+          - name: MY_NODE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName
+          - name: MY_POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: MY_POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          - name: MY_POD_IP
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIP
+          - name: MY_CONTAINER_NAME
+            value: itom-opsbridge-data-enrichment-service
+      {{- with ( coalesce .Values.nodeSelector .Values.global.nodeSelector ) }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+      - name: vault-token
+        emptyDir: {}
+      - name: tmp-storage
+        emptyDir: {}
+      - name: des-log-volume
+        {{- include "helm-lib.pvcStorage" (dict "claim" "logVolumeClaim" "Release" .Release "Template" .Template "Values" .Values ) | nindent 8 }}
+      - name: des-conf-volume
+        {{- include "helm-lib.pvcStorage" (dict "claim" "configVolumeClaim" "Release" .Release "Template" .Template "Values" .Values ) | nindent 8 }}
+      - name: conf
+        configMap:
+          name: itom-des-cm
+          defaultMode: 0755
+      - name: secret-volume
+        projected:
+          defaultMode: 420
+          sources:
+          - configMap:
+              name: api-client-ca-certificates
+      - name: certs-volume
+        projected:
+          defaultMode: 420
+          sources:
+          - configMap:
+              name: opsb-ca-certificate

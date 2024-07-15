@@ -1,0 +1,106 @@
+{{- if .Values.global.database.autoCreateDatabases }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: itom-autocreate-databases-{{ randAlphaNum 7 | lower }}
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    "helm.sh/hook": "pre-install,pre-upgrade"
+    "helm.sh/hook-delete-policy": before-hook-creation
+    "helm.sh/hook-weight": "10"
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      name: itom-autocreate-databases
+      annotations:
+        {{- if .Values.global.vaultAppRole }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-{{ .Values.global.vaultAppRole }}
+        {{- else }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-default
+        {{- end }}
+        pod.boostport.com/vault-init-container: install
+    spec:
+      securityContext:
+        runAsUser: {{ .Values.global.securityContext.user }}
+        runAsGroup: {{ .Values.global.securityContext.fsGroup }}
+        fsGroup: {{ .Values.global.securityContext.fsGroup }}
+        supplementalGroups: [{{ .Values.global.securityContext.fsGroup }}]
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      serviceAccount: {{.Values.deployment.rbac.serviceAccount}}
+      serviceAccountName: {{.Values.deployment.rbac.serviceAccount}}
+      containers:
+        - name: itom-autocreate-databases
+          image: {{ .Values.global.docker.registry }}/{{ .Values.global.docker.orgName }}/{{ .Values.autoCreate.image }}:{{ .Values.autoCreate.imageTag }}
+          imagePullPolicy: {{ .Values.global.docker.imagePullPolicy }}
+          securityContext:
+            runAsUser: {{ .Values.global.securityContext.user }}
+            runAsGroup: {{ .Values.global.securityContext.fsGroup }}
+            allowPrivilegeEscalation: false
+            privileged: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+              - ALL
+          env:
+            - name: dbAdminUser
+              value: {{.Values.global.database.admin | quote}}
+            - name: dbAdminDatabase
+              value: {{.Values.global.database.dbName | quote}}
+            - name: dbAdminPassword
+              valueFrom:
+                configMapKeyRef:
+                  name: {{.Values.global.database.databaseInitScript }}
+                  key: dbadmin.password
+            - name: dbHost
+              value: {{ include "helm-lib.dbHost" . | quote }}
+            - name: dbPort
+              value: {{ include "helm-lib.dbPort" . | quote }}
+            - name: dbType
+              value: {{ include "helm-lib.dbType" . | quote }}
+            - name: oracleConnectionString
+              value: {{ include "helm-lib.dbOracleConnectionString" . | quote }}
+            - name: oracleSid
+              value: {{ include "helm-lib.dbOracleSid" . | quote }}
+            - name: isTLSEnabled
+              value: {{ include "helm-lib.dbTlsEnabled" . | quote }}
+          resources:
+            requests:
+              cpu: 10m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 192Mi
+          volumeMounts:
+            - mountPath: /var/run/secrets/boostport.com
+              name: vault-token
+            - mountPath: /itom-autocreate-databases/sql
+              name: dbinit-sql-files
+            {{- if eq (include "helm-lib.dbType" .) "oracle" }}
+            - mountPath: /itom-autocreate-databases/wallet
+              name: oracle-wallet
+            {{- end }}
+            - mountPath: /itom-autocreate-databases/walletzip
+              name: oracle-wallet-zip
+            - mountPath: /usr/lib/oracle/21/client64/lib/network/admin
+              name: oracle-ora
+      restartPolicy: Never
+      volumes:
+        - name: vault-token
+          emptyDir: {}
+        - name: oracle-wallet-zip
+          emptyDir: {}
+        - name: oracle-ora
+          emptyDir: {}
+        - name: dbinit-sql-files
+          configMap:
+            name: {{ .Values.global.database.databaseInitScript }}
+        {{- if eq (include "helm-lib.dbType" .) "oracle" }}
+        - name: oracle-wallet
+          configMap:
+            name: {{ .Values.global.database.oracleWalletName }}
+        {{- end }}
+{{- end }}
+

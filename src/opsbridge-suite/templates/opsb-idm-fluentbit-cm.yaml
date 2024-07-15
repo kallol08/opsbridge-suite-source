@@ -1,0 +1,67 @@
+{{- $suiteCode := "opsb" -}}
+{{- $capabilityCode := "idm" -}}
+{{- $enableDebug := .Values.enableStdOutInFluentBit -}}    
+
+{{- $prefix := printf "%s-%s" $suiteCode $capabilityCode }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $prefix }}-fluentbit-cm
+  labels:
+    {{ .Values.global.fluentbit.fluentbitSelector.labelName }}: {{ .Values.global.fluentbit.fluentbitSelector.labelValue | quote }}
+
+data:
+  {{ $prefix }}-parsers.conf: |-
+    [PARSER]
+        Name         idm_multiline
+        Format       regex
+        Regex        /(?<time>\d+\-\d+\-\d+T\d+\:\d+\:\d+.\d+\+\d+) (?<level>[A-Z]+) (?<threadName> [^ ]+[^ ]+) (?<class>([a-z0-9]+\.)+[A-Z][a-zA-Z0-9_]*) (?<message>.*)/
+        Time_Key     time
+        Time_Format  %Y-%m-%dT%H:%M:%S.%L
+        Time_Offset  +0000
+        Time_Keep    On
+
+    [PARSER]
+        Name         idmstartsh_multiline
+        Format       regex
+        Regex        /(?<time>\d+\-\d+\-\d+T\d+\:\d+\:\d+.\d+\+\d+\:\d+) (?<level>[A-Z]+) (?<message>.*)/
+        Time_Key     time
+        Time_Format  %Y-%m-%dT%H:%M:%S.%s
+        Time_Offset  +0000
+        Time_Keep    On        
+
+  {{- $logsHome := printf "/fluentbit/deployment-log/%s/%s__itom-idm-*__itom-idm__*" $capabilityCode .Release.Namespace }}
+  {{ $prefix }}-input.conf: |-
+    [INPUT]
+        Name              tail
+        Tag               tail.idm-loader.log
+        Path              {{ $logsHome }}/idm-loader.log
+        Multiline         On
+        Parser_FirstLine  idm_multiline
+
+    [INPUT]
+        Name              tail
+        Tag               tail.idm-service.log
+        Path              {{ $logsHome }}/idm-service.log
+        Multiline         On
+        Parser_FirstLine  idm_multiline
+
+    [INPUT]
+        Name              tail
+        Tag               tail.idm-startsh.log
+        Path              {{ $logsHome }}/startidm.sh.log
+        Multiline         On
+        Parser_FirstLine  idmstartsh_multiline
+
+    [FILTER]
+        Name       grep
+        Match      tail.idm-*.log
+        Regex      log /WARN|ERROR|FATAL/        
+
+  {{- if $enableDebug }}
+    [OUTPUT]
+        Name          stdout
+        Match         tail.idm-*.log
+  {{- end }}
+
+

@@ -1,0 +1,14 @@
+{{- /* Copyright 2020-2023 Open Text */ -}}
+
+{{- $name := print .Values.deployment.name "-bbc-trusted-certs" -}}
+{{- $data := dict -}}
+{{- $prev := lookup "v1" "ConfigMap" .Release.Namespace $name | default (((.Values.unittest).lookup).configmap).bbcTrustedCerts | default dict -}}
+{{- $_ := mergeOverwrite $data (get $prev "data"  | default dict) -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+{{ include "obm.labels" (dict "name" $name "Release" .Release "Chart" .Chart "Values" .Values) | indent 4 }}
+{{ toYaml (dict "data" $data) }}

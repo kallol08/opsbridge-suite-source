@@ -1,0 +1,12 @@
+apiVersion: v2
+appVersion: 2.12.1-6
+dependencies:
+- name: helm-lib
+  repository: https://orgartifactory.swinfra.net/artifactory/itom-helm-charts-stable
+  version: 1.9.0-14
+description: Open Text ITOM DI Query Gateway & Query Service
+maintainers:
+- email: swpdl.askstoreonce@microfocus.com
+  name: ITOM-DI
+name: itomdiquery
+version: 2.12.1-6

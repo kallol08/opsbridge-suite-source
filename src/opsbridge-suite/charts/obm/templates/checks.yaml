@@ -1,0 +1,47 @@
+{{- /* Copyright 2020-2023 Open Text */ -}}
+
+{{- $data := dict "msgs" "" }}
+
+{{- if (ne .Values.global.cms.secrets.admin "idm_admin_admin_password") }}
+{{-   set $data "msgs" (println (get $data "msgs") "global.cms.secrets.admin must be 'idm_admin_admin_password'") }}
+{{- end }}
+
+{{- if (ne .Values.global.cms.secrets.sysadmin "sys_admin_password") }}
+{{-   set $data "msgs" (println (get $data "msgs") "global.cms.secrets.sysadmin must be 'sys_admin_password'") }}
+{{- end }}
+
+{{- if (ne .Values.global.cms.secrets.UISysadmin "ucmdb_uisysadmin_password") }}
+{{-   set $data "msgs" (println (get $data "msgs") "global.cms.secrets.UISysadmin must be 'ucmdb_uisysadmin_password'") }}
+{{- end }}
+
+{{- if .Values.deployment.database.dbName }}
+{{-   set $data "msgs" (println (get $data "msgs") "obm.deployment.database.dbName must not be set") }}
+{{- end }}
+
+{{- if .Values.deployment.database.eventDbName }}
+{{-   set $data "msgs" (println (get $data "msgs") "obm.deployment.database.eventDbName must not be set. Instead use obm.deployment.eventDatabase.dbName.") }}
+{{- end }}
+
+{{- if .Values.deployment.database.mgmtDbName }}
+{{-   set $data "msgs" (println (get $data "msgs") "obm.deployment.database.mgmtDbName must not be set. Instead use obm.deployment.mgmtDatabase.dbName.") }}
+{{- end }}
+
+{{- if .Values.deployment.database.eventUser }}
+{{-   set $data "msgs" (println (get $data "msgs") "obm.deployment.database.eventUser must not be set. Instead use obm.deployment.eventDatabase.user.") }}
+{{- end }}
+
+{{- if .Values.deployment.database.mgmtUser }}
+{{-   set $data "msgs" (println (get $data "msgs") "obm.deployment.database.mgmtUser must not be set. Instead use obm.deployment.mgmtDatabase.user.") }}
+{{- end }}
+
+{{- if .Values.deployment.database.user }}
+{{-   set $data "msgs" (println (get $data "msgs") "obm.deployment.database.user must not be set. Instead use obm.deployment.mgmtDatabase.user and obm.deployment.eventDatabase.user.") }}
+{{- end }}
+
+{{- if .Values.deployment.database.userPasswordKey }}
+{{-   set $data "msgs" (println (get $data "msgs") "obm.deployment.database.userPasswordKey must not be set. Instead use obm.deployment.mgmtDatabase.userPasswordKey and obm.deployment.eventDatabase.userPasswordKey.") }}
+{{- end }}
+
+{{- if (get $data "msgs") }}
+{{-   fail (get $data "msgs") }}
+{{- end }}

@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: webtopdf
+  namespace: {{ .Release.Namespace }}
+  labels:
+    service: webtopdf
+    app.kubernetes.io/name: webtopdf
+    app.kubernetes.io/managed-by: bvd-config
+    app.kubernetes.io/version: {{ .Values.bvd.imageTag }}
+    itom.microfocus.com/capability: bvd
+    tier.itom.microfocus.com/webtopdfService: webtopdfService
+spec:
+  ipFamilyPolicy: PreferDualStack
+  ports:
+  - name: webtopdf
+    port: 3000
+    protocol: TCP
+    targetPort: 3000
+  selector:
+    service: webtopdf
