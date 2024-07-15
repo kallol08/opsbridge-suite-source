@@ -1,0 +1,551 @@
+#
+# This file is an example of common properties to be injected into the OpsBridge helm chart.
+#
+
+#===================================
+#### IMPORTANT! READ THIS FIRST ####
+#===================================
+
+# Note that many properties have default values which are correct for many
+# installations.  Therefore, you should only uncomment or change values that
+# you wish to change.  By doing so, you are overriding the default values which
+# are embedded into the chart itself.
+#
+
+#
+# Note that the indentation levels for this file are EXTREMELY IMPORTANT.  Each
+# line is indented by two spaces relative to the parent line in the same grouping.
+# When exposing a commented out property, simply remove ONLY the "#" character
+# and nothing else on the same line, as the original sample file should be
+# properly indented.
+#
+
+
+#====================================
+####  CONFIGURATION BEGINS HERE  ####
+#====================================
+
+
+#
+# REQUIRED: You must accept (set acceptEula: true) the Open Text EULA to deploy Opsbridge Suite.
+# The EULA can be found at: https://www.microfocus.com/en-us/legal/software-licensing
+#
+acceptEula: true
+
+
+global:
+  # [REQUIRED] Externally accessible hostname/FQDN (Load balancer OR Master Node)
+  externalAccessHost: opsbridge-suite.spacdemo.net
+  # [REQUIRED] Externally accessible port (Load balancer OR Master Node). External Access Port along with External Access Host is used to access Opsbridge Suite.
+  externalAccessPort: 443
+
+  expose:
+    enableALB: false           # set to true to enable alb 
+    type:                     # For all the services to be exposed outside, default service type is of "Nodeport", with this parameter we can change service type to "LoadBalancer","ClusterIP" depending on need
+    internalLoadBalancer:
+      annotations: {}         # Annotation specified here will be applicable to the Load balancer that will be created during Opsbridge Installation; It specifies the annotations required for the AWS Kubernetes Provider
+                              #For custom tags, specify the annotation- service.beta.kubernetes.io/aws-load-balancer-additional-resource-tags: <TAG1>=<Value1>,<TAG2>=<Value2>
+
+  # Every Service here represents a functionality Opsbridge Suite offers. Users can enable one or multiple components.
+  # opticReporting: Reporting component contains OPTIC Data Lake, BVD and Collection Service, if "true" reporting will be installed.
+  # automaticEventCorrelation: Automatic Event Correlation component contains Automatic Event Correlation and OPTIC Data Lake.
+  # stakeholderDashboard: Stakeholder dashboard contains BVD component.
+  # obm: Operations Bridge Manager component.
+  services:
+# User must uncomment the capabilities they want to deploy and comment the ones they do no want to deploy
+    automaticEventCorrelation:
+#      deploy: true
+    stakeholderDashboard:
+      deploy: true
+    obm:
+      deploy: true
+    hyperscaleObservability:
+#      deploy: true                            # This parameter deploys all HSO functionalities (such as AWS, Azure, K8s, Virtualization Event Collector). Uncomment this parameter to deploy the HSO capability with Optic DL.
+#     deployLightHSO: true                    # This parameter only deploys HSO functionalities that do not use Optic DL (such as Virtualization Event Collector). Uncomment this parameter to deploy HSO without Optic DL. Note that enabling any other capability that requires Optic DL would still trigger Optic DL deployment.
+    agentlessMonitoring:                        # Agentless Monitoring provides a new central UI for managing multiple SiteScope servers
+      deploy: true
+    applicationMonitoring:                      # Application Monitoring provides a new central UI for managing APM servers
+#      deploy: true
+    anomalyDetection:                           # Anomaly Detection is a technology preview capability. Enable this capability only if OBA is going to be installed and integrated with OPTIC DL to try a technology preview of the new Anomaly Detection Configurator and OPTIC DL Source Configurator user experience interfaces.
+#      deploy: true
+    opticReporting:
+      deploy: true
+    opticDataLake:
+#      deploy: false                            # This parameter decides whether or not Optic Data lake will be deployed. If this parameter is commented then optic Data Lake will be deployed, else provide parameters required to access Shared optic DL.
+      externalOpticDataLake:                    # This contains all the parameters needed to access Optic DL deployed in different namespace
+        externalAccessHost:                     # External Access Host of the providing deployment
+        externalAccessPort:                     # Ingress Controller Port of the providing deployment
+        integrationUser:                        # IDM Integration User of the providing deployment
+        # User must use one of the below connection mechanisms if using Shared Optic Data Lake
+        connectUsingNamespace:                  # Connect using cross-namespace communication within same cluster
+          namespace:                            # Namespace of the providing deployment
+        connectUsingServiceFQDN:                # Connect using service specific FQDNs
+          diReceiverHost:                       # Hostname of OPTIC Reporting Ingestion Service
+          diReceiverPort:                       # (Service FQDN) Port of OPTIC Reporting Ingestion Service
+          diAdminHost:                          # Hostname of OPTIC Reporting Administration Service
+          diAdminPort:                          # (Service FQDN) Port of OPTIC Reporting Administration Service
+          diDataAccessHost:                     # Hostname of OPTIC Reporting Data Access Service
+          diDataAccessPort:                     # (Service FQDN) Port of OPTIC Reporting Data Access Service
+          diPulsarHost:                         # Hostname of OPTIC Reporting Pulsar service
+          diPulsarSslPort:                      # (Service FQDN) Port of OPTIC Reporting Pulsar SSL service
+          diPulsarWebPort:                      # (Service FQDN) Port of OPTIC Reporting Pulsar Web service
+          ingressControllerHost:                # Ingress Controller FQDN of Providing namespace: Used to connect to the IDM deployed in the providing namespace
+          ingressControllerPort:                # Ingress Controller port of Providing namespace: Used to connect to the IDM deployed in the providing namespace
+        connectUsingExternalAccessHost:         # Connect using External Access Host
+          diReceiverPort:                       # (External Host) Port of OPTIC Data Lake Ingestion Service
+          diAdminPort:                          # (External Host) Port of OPTIC Data Lake Administration Service
+          diDataAccessPort:                     # (External Host) Port of OPTIC Data Lake Data Access Service
+          diPulsarSslPort:                      # (External Host) Port of OPTIC Data Lake Message Bus SSL service
+          diPulsarWebPort:                      # (External Host) Port of OPTIC Data Lake Message Bus Web service
+
+  #    If "persistence.enabled" is set to "true" then the PVCs(Persistent Volume Claim) will be automatically created when the chart is deployed. You do not need to fill the section.
+  #    However, this requires that there are available PVs(Persistence Volume) to bind to. For opsbridge, 5 PVs are required.
+  #    You must create the PVs before deploying the chart to make auto PVC assignments possible.
+  #
+  #    If "persistence.enabled" is set to "false" then you must create the PVCs as well as the PVs
+  #    before deploying the chart and fill the section below.
+
+  # Define persistent storage (needed only if Manual PVC is selected e.g. persistence.enabled: false):
+  #    dataVolumeClaim is a Persistent Volume Claim (PVC) for storing data files.
+  #    dbVolumeClaim is a PVC for storing database files.
+  #    configVolumeClaim is a PVC for storing configuration files.
+  #    logVolumeClaim is a PVC for storing log files.
+  #    pvc-omi-0, pvc-omi-1 and omi-artemis-pvc are PVCs for storing OBM files
+
+  persistence:
+    enabled: true            # set to "true" to enable auto-PVC creation (requires available PVs) # for manually created PVC add the 5 PVC described above. You must pass the same value during install and upgrade. For example, if you had set “persistence: enabled: true” during install, for upgrade also set "persistence: enabled: true”.
+
+    # Used to inject storageClasses into PVC creation.
+    # User can change any/all to match the actual storageClasses used in their environment.
+    storageClasses:
+      # All 4 OPSB PVCs are created using "default-rwx", omi-artemis PVC is created using "default-rwo".
+      default-rwx: opsb-default     #Provide the storage class name of the pvcs. Set it to "cdf-nfs" if using OMT NFSProvisioner capability for PV creation.
+      default-rwo: opsb-default     #Provide the storage class name of the pvcs. Set it to "cdf-nfs" if using OMT NFSProvisioner capability for PV creation.
+
+  nginx:
+    httpsPort: 30443         # nginx Load balancer Port
+
+  cluster:
+    k8sProvider: "aws"       # k8s Provider,This flag is used to set AWS related annotations in k8s
+
+  rbac:
+    clusterRoleCreate: true
+
+  prometheus:
+    deployPrometheusConfig: false      #true = deploy scraping rules (ServiceMonitor, PodMonitor) and alerts (PrometheusRule)
+    deployGrafanaConfig: false         #true = deploy configmaps defining the Grafana dashboards
+
+  docker:
+    # The values below are default and already filled in to use internal docker repository that comes with CDF.
+    # You only need to change the values when using external docker registry.
+    registry: 193002196427.dkr.ecr.ap-southeast-2.amazonaws.com
+    orgName: hpeswitom
+    imagePullSecret: "ecr-key"
+    imagePullPolicy: IfNotPresent
+
+    # The user/group IDs (UID/GID) for runtime deployment, and ownership of persistent storage.
+    # if User 1999 is already in use by some other application then UID/fsGroup needs to be changed to different user.If UID/fsGroup is changed then same user should be used to setup NFS storage.
+    # UID and GID must be the same
+  securityContext:
+    user: 1999
+    fsGroup: 1999
+
+
+  # Vertica Server details. When 'embedded' is set to "false", fill the parameters below for as per external External Vertica setup.
+  # Set embedded to "true" for Embedded Vertica (EVALUATION PURPOSE ONLY) and change the following four parameters given below (‘host’, ’rwuser’, ‘port’ and ‘rouser’) as described within their comments
+  vertica:
+    embedded: true
+    host: itom-di-vertica-svc                      # FQDN of Vertica Server. Incase of Vertica cluster with 3 nodes, enter comma separated list of FQDN of all the 3 nodes. In case of embedded Vertica, this parameter MUST be set to 'itom-di-vertica-svc'.
+    rwuser: dbadmin                                      	# DB User with READ and WRITE Permissions. In case of embedded Vertica, this parameter MUST be set to 'dbadmin'.
+    rouser: dbadmin                                      	# DB User with READ ONLY Permission. In case of embedded Vertica, this parameter MUST be set to 'dbadmin'.
+    port: 5444                                                  # External vertica port for both TLS enabled and non-TLS. In case of embedded Vertica, this parameter MUST be set to '5444'.
+    db: itomdb                                                  #  vertica database name
+    rwuserkey: ITOMDI_DBA_PASSWORD_KEY                          # [DO NOT CHANGE] Password key for 'rwuser'
+    rouserkey: ITOMDI_RO_USER_PASSWORD_KEY                      # [DO NOT CHANGE] Password key for 'rouser'
+    tlsEnabled: true                                            # If set to "true", MUST provide Vertica Server Certificate during 'helm install' command for TLS Connection. Refer document for Installation command.
+    resourcepoolname: itom_di_stream_respool_provider_default   # Provide externally created and managed resource pool name IF the externally managed resource pool name is NOT the same as the default pool name ELSE can be left blank. Provide for external vertica, leave blank when vertica.embedded is set to true.
+
+
+  # Relational Database Details.(Postgres/Oracle).
+  database:
+    # If set to "true", Internal Postgres is used for database (For EVALUATION PURPOSE ONLY).
+    internal: true     # The default is "false" to use external database, when set to false, fill the external database details in this section.
+
+    ## Parameters below are for external database only and MUST be provided when 'internal' is set to "false". You can skip this section ONLY if 'internal' is set to "true".
+    ## You MUST also set the DB parameters at the later part of this file in this case. Fill the "idm:" , "autopass:", "obm:" and "bvd:" sections to set Database Username, Database Name for all components.
+
+    # Default is "postgresql" to use External Postgres, change to "oracle" to use External Oracle.
+    type: postgresql
+    # DB Server Hostname. Required for Postgres and Oracle.
+    host: Externalpostgresql.swinfra.net
+    # DB Port. Required for Postgres and Oracle.
+    port: 5432
+    # When tlsEnabled is set to true, MUST provide database server certificate during installation.Refer Documentation for Installation Command. To Disable TLS, Change tlsEnabled to "false"
+    tlsEnabled: true
+
+    # Opsbridge supports connection to Oracle DB by any of 2 ways -> 1) Connection String and 2) Oracle SID.
+    # Please provide Any of the below given input to connect to DB.
+    # Oracle Connection String. If Connection String is provided then 'oracleSid' is not used.[Used for Oracle only and need not be set if Postgres is used]
+    oracleConnectionString:
+    # Oracle SID [Used for Oracle only and need not be set if Postgres is used]
+    oracleSid:
+
+  # Agent Metric Collection settings
+  # isAgentMetricCollectorEnabled: controls Agent Metric Collection functionality.
+  # Note: Node resolver, Data Broker and other sub-components will be started as dormant pods even if 'isAgentMetricCollectorEnabled' is set to false
+  # autoStartAgentMetricCollector: auto-starts Agent Metric Collection on startup
+  isAgentMetricCollectorEnabled: false
+  autoStartAgentMetricCollector: false
+
+  amc:
+    # The location of the OBM server to which the Agent Metric Collector registers itself and from which Operations Agent nodes list is retrieved
+    # OBM server can be external (located outside the cluster) or internal (located inside the cluster), which means external OBM can be classic or a containerized OBM running in a different cluster.
+    externalOBM: false
+    # Set to true if using containerized OBM running in a different cluster. If set to true, provide the external access hostname and port of the cluster in which the containerized OBM is running.
+    # If set to false, provide the obm hostname and port of the classic OBM.
+    containerizedOBM: true
+    # FQDN of OBM
+    # If OBM is distributed 1GW, 1DPS, or if there's a load balancer mention in any one of the gateway or loadbalancer.
+    # This parameter must be set when externalOBM: true
+    # Ignored when externalOBM: false
+    obmHostname:
+    # The OBM server port used by components to access OBM and RTSM.If OBM is configured to be accessed as http, set this parameter to 80
+    # Ignored when externalOBM: false
+    port: 443
+    # The protocol used by components to access OBM and RTSM. If OBM is configured to be accessed http, set this parameter to http.
+    # Ignored when externalOBM: false
+    rtsmProtocol: https
+    # The username used by components to access OBM's RTSM. Provide the 'Agent Metric Collector integration user' that you had created
+    # Ignored when externalOBM: false
+    rtsmUsername:
+    # Externally accessible port on the cluster used by external OBM to communicate with the Data Broker component of Agent Metric Collector
+    # Ignored when externalOBM: false
+    dataBrokerNodePort: 1383
+    # The BBC port used by the OBM server for incoming connections. The Agent Metric Collector uses this port to communicate with OBM. The default port used by OBM is 383, therefore this setting should only be changed in case the default BBC port has been changed on the OBM server.
+    # Ignored when externalOBM: false
+    serverPort: 383
+
+    # The Agent Metric Collector can connect to this many Operations Agent nodes in parallel during metric collection.
+    # Use one of 5, 10, 20, 25. Note that higher parallel connections would consume more CPU and Memory resources than lower parallel connections.
+    numOfParallelCollections: 25
+    numOfParallelHistoryCollections: 10
+    # Provide the list of values for AMC collection configuration deployment
+    customTqls: []
+    
+  # External OBM details for Hyperscale Observability
+  cms:
+    externalOBM: false
+    udProtocol: https
+    #Provide External UCMDB Server details. Ignore if externalOBM is set to false. 
+    #Please provide same values as part of ucmdbprobe and cmsgateway sections below
+    udHostname: 
+    port: 8443
+    udUsername:    
+    secrets:
+      UISysadmin: ucmdb_uisysadmin_password          #Incase global.cms.externalOBM is set to true, set global.cms.secrets.UISysadmin to UD_USER_PASSWORD
+
+  # Boolean value to enable automated route entry in DNS. Set this to true to enable access to services outside K8S cluster
+  di:
+    externalDNS:
+      enabled: false
+    externalAccessHost:
+      #String Value for Optic DL Message Bus proxy DNS name. For optimized streaming Vertica needs to connect to Optic DL message bus. The hostname is the hostname under which Vertica DB can reach OPTIC DL's pulsar proxy.
+      pulsar:
+      #The hostname is the hostname under which Vertica DB can reach OPTIC DL's administration.
+      administration:
+      #The hostname is the hostname under which Vertica DB can reach OPTIC DL's dataAccess.
+      dataAccess:
+      #The hostname is the hostname under which Vertica DB can reach OPTIC DL's receiver.
+      receiver:
+#Secrets Password must be provided in Base64 encoded format.
+secrets:
+  #Admin Password for IDM admin user. This password will be used to log into IDM UI.
+  #The password must meet the following requirements:
+  #"Length must be at least 8 characters"
+  #"Length cannot exceed 64 characters"
+  #"Must contain 1 or more upper case characters"
+  #"Must contain 1 or more lower case characters"
+  #"Must contain 1 or more digit (0-9) characters"
+  #"Must contain 1 or more special characters in: -+"?/.,<>:;[]{}`~!@#%^&*()_=|$"
+  idm_opsbridge_admin_password: MUlTTypoZWxwCg==
+
+  #Verica DBA and RO User passwords
+  ITOMDI_DBA_PASSWORD_KEY: MUlTTypoZWxwCg==
+  ITOMDI_RO_USER_PASSWORD_KEY: MUlTTypoZWxwCg==
+
+  #Postgres/Oracle Db Passwords for different users
+  AUTOPASS_DB_USER_PASSWORD_KEY: MUlTTypoZWxwCg==
+  BVD_DB_USER_PASSWORD_KEY: MUlTTypoZWxwCg==
+  AEC_DB_USER_PASSWORD_KEY: MUlTTypoZWxwCg==
+  CM_DB_PASSWD_KEY: MUlTTypoZWxwCg==
+  IDM_DB_USER_PASSWORD_KEY: MUlTTypoZWxwCg==
+  MA_DB_USER_PASSWORD_KEY: MUlTTypoZWxwCg==
+  SNF_DB_USER_PASSWORD_KEY: MUlTTypoZWxwCg==
+  OBM_MGMT_DB_USER_PASSWORD_KEY: MUlTTypoZWxwCg==
+  OBM_EVENT_DB_USER_PASSWORD_KEY: MUlTTypoZWxwCg==
+  RTSM_DB_USER_PASSWORD_KEY: MUlTTypoZWxwCg==
+  BTCD_DB_PASSWD_KEY: MUlTTypoZWxwCg==
+
+  #Password for External OBMs RTSM user.The username will be provided in Helm values.yaml under global.amc.rtsmUsername
+  OBM_RTSM_PASSWORD: MUlTTypoZWxwCg==
+
+  #Password for External OBMs user with Content Packs upload permissions. The username will be provided in Helm values.yaml under global.monitoringService.obmUsername
+  OBM_USER_PASSWORD_KEY: MUlTTypoZWxwCg==
+
+  #UCMDB Master Key.This key is not related to any configured UCMDB schema or database password. Its value can be anything as it is used for encryption.You can provide any value for this encryption key but its length must be of 32 chars only
+  #The password must meet the following requirements:
+  #"Length must be exactly 32"
+  #"Must contain 1 or more upper case characters"
+  #"Must contain 1 or more lower case characters"
+  #"Must contain 1 or more digit (0-9) characters"
+  #"Must contain 1 or more special characters in: :/._+-[]"
+  ucmdb_master_key: SVMwX2hlbHBJUzBfaGVscElTMF9oZWxwSVMwX2hlbHA=
+  
+  #System Administrator Password used for OBM JMX and UCMDB sysadmin user
+  #The password must meet the following requirements:
+  #"Length must be at least 8 characters"
+  #"Length cannot exceed 64 characters"
+  #"Must contain 1 or more upper case characters"
+  #"Must contain 1 or more lower case characters"
+  #"Must contain 1 or more digit (0-9) characters"
+  #"Must contain 1 or more special characters in: -+"?/.,<>:;[]{}`~!@#%^&*()_=|$"
+  sys_admin_password: MUlTTypoZWxwCg==
+  
+  #Password for External Universal Discovery user.The username will be provided in Helm values.yaml under global.cms.udUsername
+  UD_USER_PASSWORD: MUlTTypoZWxwCg==
+
+  #Password for smtpServer user. Used for report scheduling with pdf-print tool.
+  schedule_mail_password_key: MUlTTypoZWxwCg==
+
+  # IDM Integration User password of the providing deployment when shared optic DL is used.
+  OPTIC_DATALAKE_INTEGRATION_PASSWORD: MUlTTypoZWxwCg==
+
+# Below section deals with specific DB parameters for IDM, Autopass, BVD and OBM.
+# This section needs to match the user/DB details created during Prepare Relational Database step.Since this is not creating specified username and DB Name but referring to already created relational DB details.
+# This section has to be edited only in case of external postgres or external oracle. In case of internal postgres, leave the section to defaults.
+# For Oracle, only 'user' is required. 'dbName' is not used. The 'user' is used for the Oracle schema in case of Idm, Autopass, Bvd and UCMDB. OBM uses 'eventUser' and 'mgmtUser' as schemas . Provide DIFFERENT users for each of IDM, Autopass, BVD, UCMDB and OBM.
+# For Postgres, both 'user' and 'dbName' are required. Provide the different users for all the postgres databases i.e for IDM, Autopass, BVD, UCMDB and OBM. Since different user is the owner for all databases, different password keys is used for all Users.
+# For OBM, eventDbName and mgmtDbName must have the same password as they use the same user in case of postgres. For Oracle, schema specified under eventUser and mgmtUser must have the same password.
+# The password keys are set while running "gen_secrets" script and refers to password for the DB User. You don't need to edit 'userPasswordKey'.
+
+
+# All IDM related parameters which are specific only to IDM are given below
+idm:
+  deployment:
+    database:
+      dbName: idm                                       # e.g. idm
+      user: idm
+      userPasswordKey: IDM_DB_USER_PASSWORD_KEY          # [DO NOT CHANGE]
+
+# All Autopass related parameters which are specific only to Autopass are given below
+# schema: If Databases are created using "DBSQLGenerator.sh" script, do not change the value else schema name should be what has been set in "PreparePostgreSQL" step for autopassdb.
+autopass:
+  deployment:
+    database:
+      dbName: autopass
+      schema: autopassschema                           # Used Only for Postgres
+      user: autopass
+      userPasswordKey: AUTOPASS_DB_USER_PASSWORD_KEY          # [DO NOT CHANGE]
+
+# All BVD related parameters which are specific only to BVD are given below
+bvd:
+  deployment:
+    database:
+      dbName: bvd                                        # e.g. bvd
+      user: bvd
+      userPasswordKey: BVD_DB_USER_PASSWORD_KEY           # [DO NOT CHANGE]
+  smtpServer:
+    host:
+    port:
+    security:                               # Specify the value as  eg: TLS or STARTTLS
+    user:
+    from:
+    passwordKey: schedule_mail_password_key # [DO NOT CHANGE] Password key for mailProxy user
+
+aec:
+  deployment:
+    database:
+      dbName: aec
+      user: aec
+      userPasswordKey: AEC_DB_USER_PASSWORD_KEY
+
+# All OBM related parameters which are specific only to OBM are given below
+obm:
+  bbc:
+    port: 383                                         # OMI-BBC Port
+  omi:
+    storageClassName: "io2"                             # configure the storage class for the omi PVCs
+  params:
+    haEnabled: false                                     # OBM HA is enabled by default. To Disable HA, Update the parameter to false.
+    managementPacks:                                    # All Management Pack marked as true will be deployed during Installation
+      ADMP: false
+      AMCMP: false
+      AmazonWebServicesMP: false
+      BPMContent: false
+      DiagnosticsMP: false
+      Example_Policy_Templates: false
+      ExchangeMP: false
+      GoogleCloudMP: false
+      HANAMP: false
+      IISMP: false
+      InfraMP: true
+      JbsMP: false
+      MSSQLMP: false
+      Microsoft365MP: false
+      MicrosoftAzureMP: false
+      MySQLMP: false
+      OraMP: false
+      PostgreSQLMP: false
+      RealUserMonitorMP: false
+      SAPMP: false
+      SiteScopeMetricStreamingMP: false
+      SiteScope_Event_Integration: false
+      VMWareInfraMP: false
+      WbsMP: false
+      WebLogicMP: false
+  deployment:
+    database:
+      postgresCrlCheckEnabled: true
+    mgmtDatabase:
+      dbName: obm_mgmt                                  # Used for Postgres
+      user: obm_mgmt
+      userPasswordKey: OBM_MGMT_DB_USER_PASSWORD_KEY         # [DO NOT CHANGE]
+    eventDatabase:
+      dbName: obm_event                                 # Used for Postgres
+      user: obm_event
+      userPasswordKey: OBM_EVENT_DB_USER_PASSWORD_KEY         # [DO NOT CHANGE]
+
+ucmdbserver:
+  deployment:
+    database:
+      dbName: rtsm
+      user: rtsm
+      userPasswordKey: RTSM_DB_USER_PASSWORD_KEY           # [DO NOT CHANGE]
+
+# Before provisioning the OPTIC Data Lake Message Bus component, zookeeper disk size, bookkeeper journal size, bookkeeper ledgers size parameters should be set based on the deployment size so that PV to PVC binding happens correctly
+itomdipulsar:
+  proxy:
+    config:
+      useExternalCASignedCerts: false  #Optional, Toggle to indicate using external CA signed server cert on or off.
+  bookkeeper:
+    volumes:
+      ledgers:
+        local_storage: false
+        storageClassName: "gp3"
+        size: "20Gi"
+      journal:
+        local_storage: false
+        storageClassName: "io2"
+        size: "4Gi"
+      configData:
+        journalSyncData: true
+  zookeeper:
+    volumes:
+      data:
+        local_storage: false
+        storageClassName: "gp3"
+        size: "4Gi"
+      dataLog:
+        local_storage: false
+        size: 10Gi
+        storageClassName: "gp3"
+
+# [DO NOT CHANGE] Used for Ingress Controller for BYOK Deployment. Not to be used for On-Prem Deployment.
+itom-ingress-controller:
+  nginx:
+    service:
+      external:
+        enable: false
+      internal:
+        enable: true
+
+# All Credential Manager related configurations
+credentialmanager:
+  deployment:
+    database:
+      dbName: credentialmanager
+      user: credentialmanageruser
+      userPasswordKey: CM_DB_PASSWD_KEY                       # [DO NOT CHANGE]
+
+# All itom-opsbridge-monitoring-admin related configurations
+itomopsbridgemonitoringadmin:
+  deployment:
+    database:
+      dbName: monitoringadmindb
+      user: monitoringadminuser
+      userPasswordKey: MA_DB_USER_PASSWORD_KEY                # [DO NOT CHANGE]
+
+# ====================================================================================================
+# Enables a custom resource pool called itom_di_postload_resource_pool for the post load (aggregation) queries
+# to use this resource pool.
+# This setting is recommended in order to provide sufficient resources for post load queries.
+# The default postload resource pool is set to "itom_di_postload_respool_provider_default", if you are
+# using a different resource pool, please uncomment the below section and update the resource pool name
+# ====================================================================================================
+# itomdipostload:
+#  dipostload:
+#    config:
+#      postload:
+#        postResourcePool: "itom_di_postload_respool_provider_default"  
+
+#All itommonitoringsnf related configurations
+itommonitoringsnf:
+  deployment:
+    database:
+      dbName: monitoringsnfdb
+      user: monitoringsnfuser
+      userPasswordKey: SNF_DB_USER_PASSWORD_KEY               # [DO NOT CHANGE]
+
+# Configuration paramaters for ucmdb probe integration with external OBM Server (UCMDB Server)
+ucmdbprobe:
+  deployment:
+    type: embedded                                 # Set value to standalone if global.cms.externalOBM is set to true
+    ucmdbServer:
+      hostName: itom-ucmdb-writersvc               #Provide external UCMDB Server hostname if global.cms.externalOBM is set to true
+      port: 8443                                   #Provide external UCMDB Server port if global.cms.externalOBM is set to true
+  #UCMDB Probe certificate validation level (0,1,2).
+  #0:Full validation
+  #1:Full validation without revocation check (default)
+  #2:Basic validation
+    probeSSLFullValidation:  1   
+
+# Configuration paramaters required by cms gateway for external OBM (UCMDB Server) integration
+cmsgateway:
+  deployment:
+    ucmdb:
+      protocol: "https"
+      host: itom-ucmdb-svc      #Provide external UCMDB Server hostname if global.cms.externalOBM is set to true
+      port: 8443                #Provide external UCMDB Server port if global.cms.externalOBM is set to true
+      userName: UISysadmin      # External OBM RTSM Username if global.cms.externalOBM is set to true 
+
+#Monitoring Service Data Broker specific values
+itomopsbridgedatabroker:
+  deployment:
+    config:
+    # Use OBM Data Collector settings below only if Data Collector URL is different from the OBM User URL
+    # obmDataCollectorProtocol is the protocol to be used by the Data Broker to connect to the OBM server
+      obmDataCollectorProtocol: https
+    # obmDataCollectorHostname is the hostname to be used by the Data Broker to connect to the OBM server
+      obmDataCollectorHostname:
+    # obmDataCollectorPort is the port to be used by the Data Broker to connect to the OBM server
+      obmDataCollectorPort: 383
+
+# Configuration parameters required by the Anomaly Detection capability
+itom-oba-config:
+  deployment:
+    oba:
+      protocol: https
+      host:                                   # Operations Bridge Analytics application server host
+      configParameterServicePort: 9090
+
+# Tune the performance of itom-nom-metric-transformation pod using the below configurations.
+nommetricstransform:
+  deployment:
+    database:
+      dbName: btcd                              # OK to change for EXTERNAL Postgres
+      user: btcd                                # OK to change for EXTERNAL Postgres
+      userPasswordKey: BTCD_DB_PASSWD_KEY       # [DO NOT CHANGE]
+
+
+prometheus-cert-exporter:
+  fullnameOverride: prometheus-cert-exporter-opsb
