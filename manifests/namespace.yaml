@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    deployments.microfocus.com/deployment-name: opsbridge-suite
+    kubernetes.io/metadata.name: opsbridge
+  name: opsbridge

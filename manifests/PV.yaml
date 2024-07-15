@@ -1,0 +1,87 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: opsbvol1
+spec:
+  accessModes:
+    - ReadWriteMany
+  capacity:
+    storage: 10Gi
+  nfs:
+    path: /var/vols/itom/opsbvol1
+    server: fs-0e9af75611f953da0.efs.ap-southeast-2.amazonaws.com
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: opsb-default
+  volumeMode: Filesystem
+
+---
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: opsbvol2
+spec:
+  accessModes:
+    - ReadWriteMany
+  capacity:
+    storage: 10Gi
+  nfs:
+    path: /var/vols/itom/opsbvol2
+    server: fs-0e9af75611f953da0.efs.ap-southeast-2.amazonaws.com
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: opsb-default
+  volumeMode: Filesystem
+
+---
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: opsbvol3
+spec:
+  accessModes:
+    - ReadWriteMany
+  capacity:
+    storage: 10Gi
+  nfs:
+    path: /var/vols/itom/opsbvol3
+    server: fs-0e9af75611f953da0.efs.ap-southeast-2.amazonaws.com
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: opsb-default
+  volumeMode: Filesystem
+
+---
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: opsbvol4
+spec:
+  accessModes:
+    - ReadWriteMany
+  capacity:
+    storage: 10Gi
+  nfs:
+    path: /var/vols/itom/opsbvol4
+    server: fs-0e9af75611f953da0.efs.ap-southeast-2.amazonaws.com
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: opsb-default
+  volumeMode: Filesystem
+
+---
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: opsbvol5
+spec:
+  accessModes:
+    - ReadWriteOnce
+  capacity:
+    storage: 10Gi
+  nfs:
+    path: /var/vols/itom/opsbvol5
+    server: fs-0e9af75611f953da0.efs.ap-southeast-2.amazonaws.com
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: opsb-default
+  volumeMode: Filesystem
