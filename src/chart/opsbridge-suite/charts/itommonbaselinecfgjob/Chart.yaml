@@ -1,9 +1,0 @@
-apiVersion: v2
-appVersion: 24.2-041
-dependencies:
-- name: helm-lib
-  repository: https://orgartifactory.swinfra.net/artifactory/itom-helm-charts-stable
-  version: 1.4.10
-description: OpenText ITOM Monitoring Service Baseline Configuration Job
-name: itommonbaselinecfgjob
-version: 1.4.0-44

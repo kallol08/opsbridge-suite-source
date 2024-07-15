@@ -1,9 +1,0 @@
-apiVersion: v2
-appVersion: 3.9.1.5
-dependencies:
-- name: helm-lib
-  repository: ""
-  version: 1.8.0-34
-description: Open Text Zookeeper
-name: nomzk
-version: 1.3.11

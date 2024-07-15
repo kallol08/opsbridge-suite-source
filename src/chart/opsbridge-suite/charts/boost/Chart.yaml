@@ -1,6 +1,0 @@
-apiVersion: v2
-appVersion: 3.40.0
-description: A Helm chart for ITOM Boost configuration
-name: boost
-type: application
-version: 3.40.0

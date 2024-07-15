@@ -1,7 +1,0 @@
-apiVersion: v2
-dependencies:
-- name: helm-lib
-  repository: ""
-  version: 1.11.0-3
-name: bvd
-version: 11.13.24

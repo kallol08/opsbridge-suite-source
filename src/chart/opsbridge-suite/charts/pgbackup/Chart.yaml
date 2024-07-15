@@ -1,9 +1,0 @@
-apiVersion: v2
-appVersion: 12.3.25
-dependencies:
-- name: helm-lib
-  repository: ""
-  version: 1.8.0-33
-description: OpenText Postgres Backup Service
-name: pgbackup
-version: 12.3.25

@@ -1,5 +1,0 @@
-apiVersion: v2
-appVersion: 1.8.0-7
-description: Vault Helm chart
-name: itom-vault-client
-version: 1.8.0-7

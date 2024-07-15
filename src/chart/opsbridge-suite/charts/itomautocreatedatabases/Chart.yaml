@@ -1,9 +1,0 @@
-apiVersion: v2
-appVersion: 1.0.1
-dependencies:
-- name: helm-lib
-  repository: https://svsartifactory.swinfra.net/artifactory/itom-helm-charts-stable
-  version: 1.4.10
-description: Helm chart for creating dbs in external db
-name: itomautocreatedatabases
-version: 2.3.24

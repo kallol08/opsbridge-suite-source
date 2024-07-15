@@ -1,9 +1,0 @@
-apiVersion: v2
-appVersion: 2.0.22
-dependencies:
-- name: helm-lib
-  repository: ""
-  version: 1.8.0-33
-description: Open Text NOM API Gateway Service
-name: nomapiserver
-version: 2.0.22

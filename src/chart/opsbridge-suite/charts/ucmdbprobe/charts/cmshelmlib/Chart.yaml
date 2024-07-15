@@ -1,9 +1,0 @@
-apiVersion: v2
-appVersion: 1.10.2-10
-dependencies:
-- name: helm-lib
-  repository: ""
-  version: 1.11.0-4
-description: CMS Helm lib
-name: cmshelmlib
-version: 1.10.2-10

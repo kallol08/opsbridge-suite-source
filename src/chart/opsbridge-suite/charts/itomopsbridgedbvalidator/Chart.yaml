@@ -1,9 +1,0 @@
-apiVersion: v2
-appVersion: 1.0.1
-dependencies:
-- name: helm-lib
-  repository: https://orgartifactory.swinfra.net/artifactory/itom-helm-charts-stable
-  version: 1.4.10
-description: Helm chart for validating db parameters
-name: itomopsbridgedbvalidator
-version: 2.8.2

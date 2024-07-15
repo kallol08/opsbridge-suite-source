@@ -1,9 +1,0 @@
-apiVersion: v2
-appVersion: 1.2.0
-dependencies:
-- name: helm-lib
-  repository: https://orgartifactory.swinfra.net/artifactory/itom-helm-charts-stable
-  version: 1.5.27
-description: OpenText ITOM Cloud SME Workflows
-name: itom-cloud-sme
-version: 1.2.0-237

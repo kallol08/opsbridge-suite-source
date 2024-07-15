@@ -1,9 +1,0 @@
-apiVersion: v2
-appVersion: 12.26.008-001
-dependencies:
-- name: helm-lib
-  repository: https://orgartifactory.swinfra.net/artifactory/itom-helm-charts-stable
-  version: 1.9.0-14
-description: OpenText ITOM Monitoring Service Data Broker
-name: itomopsbridgedatabroker
-version: 4.4.0-26

@@ -1,9 +1,0 @@
-resources:
-  requests:
-    cpu: 100m
-    memory: 512Mi
-  limits:
-    cpu: 4
-    memory: 2Gi
-jvmXmsMemory: 436
-jvmXmxMemory: 1741

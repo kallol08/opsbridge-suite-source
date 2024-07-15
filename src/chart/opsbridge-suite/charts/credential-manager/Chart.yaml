@@ -1,9 +1,0 @@
-apiVersion: v2
-appVersion: 1.21.0.60
-dependencies:
-- name: helm-lib
-  repository: '@mf-stable'
-  version: 1.9.0-14
-description: Micro Focus Credential Manager
-name: credential-manager
-version: 1.6.51

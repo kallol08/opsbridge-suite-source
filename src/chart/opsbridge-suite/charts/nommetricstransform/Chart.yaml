@@ -1,9 +1,0 @@
-apiVersion: v2
-appVersion: 2.0.23
-dependencies:
-- name: helm-lib
-  repository: ""
-  version: 1.9.0-9
-description: Open Text Network Operations Management - Metric Transformation
-name: nommetricstransform
-version: 2.0.23

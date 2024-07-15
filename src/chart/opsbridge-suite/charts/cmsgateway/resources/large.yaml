@@ -1,8 +1,0 @@
-resources:
-  requests:
-    cpu: 100m
-    memory: 512Mi
-  limits:
-    cpu: 4
-    memory: 5Gi
-replicaCount: 2
