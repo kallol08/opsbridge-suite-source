@@ -1004,7 +1004,7 @@ functions:
     tlsEnableHostnameVerification: false
     tlsEnabled: true
     tlsKeyFilePath: /var/run/secrets/boostport.com/server.key
-    tlsTrustCertsFilePath: /var/run/secrets/boostport.com/issue_ca.crt
+    # tlsTrustCertsFilePath: /var/run/secrets/boostport.com/issue_ca.crt
     # Frequency how often worker performs compaction on function-topics
     topicCompactionFrequencySec: 1800
     useCompactedMetadataTopic: false
@@ -1195,8 +1195,8 @@ bastion:
       -XX:MaxDirectMemorySize=128M
       -Djdk.tls.maxCertificateChainLength=20
     authPlugin: "org.apache.pulsar.client.impl.auth.AuthenticationTls"
-    authParams: "tlsCertFile:/var/run/secrets/boostport.com/server.crt,tlsKeyFile:/var/run/secrets/boostport.com/server.key"
-    tlsTrustCertsFilePath: "/var/run/secrets/boostport.com/issue_ca.crt"
+    # authParams: "tlsCertFile:/var/run/secrets/boostport.com/server.crt,tlsKeyFile:/var/run/secrets/boostport.com/server.key"
+    # tlsTrustCertsFilePath: "/var/run/secrets/boostport.com/issue_ca.crt"
 sources_upgrade:
    component: minio-connector-upgrade
 sources_delete:
