@@ -708,9 +708,9 @@ bookkeeper:
     forceAllowCompaction: "true"
     managedLedgerDigestType: "DUMMY"
     journalMaxSizeMB: "2048"
-    journalMaxBackups: "0"
-    statsProviderClass: org.apache.bookkeeper.stats.prometheus.PrometheusMetricsProvider
-    useHostNameAsBookieID: "false"
+    # journalMaxBackups: "0"
+    # statsProviderClass: org.apache.bookkeeper.stats.prometheus.PrometheusMetricsProvider
+    # useHostNameAsBookieID: "false"
     ensemblePlacementPolicy: org.apache.bookkeeper.client.RackawareEnsemblePlacementPolicy
     reppDnsResolverClass: org.apache.pulsar.zookeeper.ZkBookieRackAffinityMapping
     enforceMinNumRacksPerWriteQuorum: "false"
