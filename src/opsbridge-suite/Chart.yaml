@@ -74,10 +74,10 @@ dependencies:
   name: itomdireceiver
   repository: ""
   version: 2.12.1-5
-- condition: global.services.opticDataLake.pulsar.deploy,global.services.opticDataLake.deploy,global.services.automaticEventCorrelation.deploy,global.services.hyperscaleObservability.deploy,global.services.opticReporting.deploy,DeployOpticDLForDev,terminalFalse
-  name: itomdipulsar
-  repository: ""
-  version: 2.10.4-2.12.1-11
+#- condition: global.services.opticDataLake.pulsar.deploy,global.services.opticDataLake.deploy,global.services.automaticEventCorrelation.deploy,global.services.hyperscaleObservability.deploy,global.services.opticReporting.deploy,DeployOpticDLForDev,terminalFalse
+#  name: itomdipulsar
+#  repository: ""
+#  version: 2.10.4-2.12.1-11
 - condition: global.services.opticDataLake.deploy,global.services.automaticEventCorrelation.deploy,global.services.hyperscaleObservability.deploy,global.services.opticReporting.deploy,DeployOpticDLForDev,terminalFalse
   name: itomdipostload
   repository: ""
