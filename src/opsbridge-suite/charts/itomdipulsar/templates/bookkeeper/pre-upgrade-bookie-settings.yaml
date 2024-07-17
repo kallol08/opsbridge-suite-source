@@ -1,0 +1,162 @@
+{{/* # */}}
+{{/* # Licensed to the Apache Software Foundation (ASF) under one */}}
+{{/* # or more contributor license agreements.  See the NOTICE file */}}
+{{/* # distributed with this work for additional information */}}
+{{/* # regarding copyright ownership.  The ASF licenses this file */}}
+{{/* # to you under the Apache License, Version 2.0 (the */}}
+{{/* # "License"); you may not use this file except in compliance */}}
+{{/* # with the License.  You may obtain a copy of the License at */}}
+{{/* # */}}
+{{/* #   http://www.apache.org/licenses/LICENSE-2.0 */}}
+{{/* # */}}
+{{/* # Unless required by applicable law or agreed to in writing, */}}
+{{/* # software distributed under the License is distributed on an */}}
+{{/* # "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY */}}
+{{/* # KIND, either express or implied.  See the License for the */}}
+{{/* # specific language governing permissions and limitations */}}
+{{/* # under the License. */}}
+{{/* # */}}
+
+{{- if (lookup "v1" "ServiceAccount" .Release.Namespace (coalesce .Values.deployment.rbac.brokerServiceAccount "itomdipulsar-broker-sa" )) }}
+{{- if .Values.components.bookkeeper }}
+{{ include "pulsar.setCurrentComponentFull" (set . "currentComponent" "pre-upgrade-bookie-settings") -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: "{{ .currentComponentFull }}-{{ randAlphaNum 7 | lower }}"
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "pulsar.standardLabels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:  
+  completions: 1
+  parallelism: 1
+  template:
+    metadata:
+      annotations:
+        pod.boostport.com/vault-init-container: install
+        {{- if .Values.global.vaultAppRole }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-{{ .Values.global.vaultAppRole }}
+        {{- else }}
+        pod.boostport.com/vault-approle: {{ .Release.Namespace }}-default
+        {{- end }}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: {{ .Values.global.securityContext.user | int64 }}
+        runAsGroup: {{ .Values.global.securityContext.fsGroup | int64 }}
+        fsGroup: {{ .Values.global.securityContext.fsGroup | int64 }}
+        seccompProfile:
+          type: RuntimeDefault
+      {{/* # The init containers will follow the queue from the zookeeper for the node to run on. */}}
+      {{- with ( coalesce .Values.nodeSelector .Values.global.nodeSelector ) }}
+      nodeSelector:
+        {{ toYaml . }}
+      {{- end }}  
+      serviceAccount: "{{ .currentComponentFull }}-sa"
+      serviceAccountName: "{{ .currentComponentFull }}-sa"
+      initContainers:
+    {{- include "helm-lib.waitForVault" . | nindent 6 }}
+    {{- $authsuperuserbroker := (include "auth.superusers.broker" .) }}    
+    {{- $glhost := .Values.global.externalAccessHost -}}
+    {{- $compfull := .currentComponentFull -}}
+    {{ $certNames := printf "Common_Name:%s,Additional_SAN:%s/%s/%s.%s/%s.%s.svc" $authsuperuserbroker $glhost $compfull $compfull .Release.Namespace $compfull .Release.Namespace }}
+    {{- include "helm-lib.containers.vaultInit" (dict "certNames" $certNames "Values" .Values) | nindent 6 }}
+    {{- include "pulsar.zookeeper.wait.init.node" . | nindent 6}}      
+      containers:     
+      - name: "{{ .currentComponentFull }}"
+        securityContext:        
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        image: {{ .Values.global.docker.registry }}/{{ .Values.global.docker.orgName }}/{{ .Values.pulsar.image }}:{{ .Values.pulsar.imageTag }}
+        imagePullPolicy: {{ .Values.global.docker.imagePullPolicy }}
+        resources:
+          {{ toYaml .Values.brokerSetting.resources | nindent 10 }}
+        command: ["/bin/bash", "-c"]
+        {{/* # This container will set bookie id */}}
+        args:
+          - |
+            source bin/coso-init.sh;
+            bin/apply-config-from-env.py conf/client.conf;
+            source bin/apply-bookie-id.sh;            
+        env:
+        - name: PULSAR_MEM
+          value: "-Xms128M -Xmx256M -XX:MaxDirectMemorySize=128M"
+        {{- if and .Values.tls.enabled .Values.tls.broker.enabled }}
+        - name: webServiceUrl
+          value: "https://{{ template "pulsar.fullname" . }}-{{ .Values.broker.component }}:{{ .Values.broker.ports.https }}/"
+        - name: brokerServiceUrl
+          value: "pulsar+ssl://{{ template "pulsar.fullname" . }}-{{ .Values.broker.component }}:{{ .Values.broker.ports.pulsarssl }}/"
+        - name: useTls
+          value: "true"
+        - name: tlsAllowInsecureConnection
+          value: "false"
+        - name: authPlugin
+          value: "org.apache.pulsar.client.impl.auth.AuthenticationTls"
+        {{- if .Values.cert }}
+        - name: tlsTrustCertsFilePath
+          value: "/pulsar/ssl/combined_ca.crt"
+        {{- end }}
+        - name: tlsEnableHostnameVerification
+          value: "false"
+        {{- else }}
+        - name: webServiceUrl
+          value: "http://{{ template "pulsar.fullname" . }}-{{ .Values.broker.component }}:{{ .Values.broker.ports.http }}/"
+        - name: brokerServiceUrl
+          value: "pulsar://{{ template "pulsar.fullname" . }}-{{ .Values.broker.component }}:{{ .Values.broker.ports.pulsar }}/"
+        {{- end }}
+        {{/* # Authentication Settings */}}
+        {{- if .Values.auth.authentication.enabled }}
+        {{- if eq .Values.auth.authentication.provider "jwt" }}
+        - name: authParams
+          value: "file:///pulsar/tokens/client/token"
+        - name: authPlugin
+          value: "org.apache.pulsar.client.impl.auth.AuthenticationToken"
+        {{- end }} 
+        {{- end }} 
+        {{- if .Values.cert }}
+        {{- if (index .Values.cert "client.crt") }}
+        - name: tlsTrustCertsFilePath
+          value: "/pulsar/ssl/custom/client_ca.crt"
+        - name: authParams
+          value: "tlsCertFile:/pulsar/ssl/custom/client.crt,tlsKeyFile:/pulsar/ssl/custom/client.key"
+        {{- end }}
+        {{- else }}
+        - name: tlsTrustCertsFilePath
+          value: {{or .Values.srcTlsTrustCertsFilePath "/var/run/secrets/boostport.com/issue_ca.crt"}}
+        - name: authParams
+          value: "tlsCertFile:/var/run/secrets/boostport.com/server.crt,tlsKeyFile:/var/run/secrets/boostport.com/server.key"
+        {{- end }}
+        volumeMounts:
+        - name: tmp
+          mountPath: /pulsar/tmp
+        - name: conf
+          mountPath: /pulsar/conf
+        - name: logs
+          mountPath: /pulsar/logs
+        - name: ssl
+          mountPath: /pulsar/ssl
+        - name: vault-token
+          mountPath: /var/run/secrets/boostport.com
+        {{- include "pulsar.coso.init.volumeMounts" . | nindent 8 }}
+        {{- include "pulsar.bastion.certs.volumeMounts" . | nindent 8 }}
+      volumes:
+      {{- include "pulsar.coso.init.volumes" . | nindent 6 }}
+      - name: tmp
+        emptyDir: {}
+      - name: conf
+        emptyDir: {}
+      - name: ssl
+        emptyDir: {}
+      - name: logs
+        emptyDir: {}
+      - name: vault-token
+        emptyDir: {}
+      {{- include "pulsar.bastion.certs.volumes" . | nindent 6 }}
+      restartPolicy: OnFailure
+{{- end }}
+{{- end }}

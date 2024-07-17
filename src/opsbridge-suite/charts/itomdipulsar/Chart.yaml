@@ -1,0 +1,12 @@
+apiVersion: v2
+appVersion: 2.10.4-2.12.1-11
+dependencies:
+- name: helm-lib
+  repository: ""
+  version: 1.9.0-14
+description: Open Text Apache Pulsar Helm chart for Kubernetes
+maintainers:
+- email: swpdl.askstoreonce@microfocus.com
+  name: ITOM-DI
+name: itomdipulsar
+version: 2.10.4-2.12.1-11
