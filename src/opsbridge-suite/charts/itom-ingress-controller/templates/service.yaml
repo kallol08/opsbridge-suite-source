@@ -95,7 +95,7 @@ metadata:
     {{- toYaml .Values.nginx.service.internal.annotations  | nindent 4 }}
   {{- else }}
     {{- if eq $provider "aws" }}
-    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    # service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
     {{- end }}
   {{- end }}
   {{- if eq .Values.nginx.service.internal.type "LoadBalancer" }}
