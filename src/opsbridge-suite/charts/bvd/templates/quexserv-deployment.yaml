@@ -36,7 +36,7 @@ spec:
         {{- end }}
         {{- include "bvd.monitorConfigmap" (dict "Values" .Values) | nindent 8 }}
     spec:
-      affinity: {{- include "bvd.affinity" (dict "deployment" "bvd-quexserv" "Values" .Values) | nindent 10 }}
+      #affinity: {{- include "bvd.affinity" (dict "deployment" "bvd-quexserv" "Values" .Values) | nindent 10 }}
       serviceAccount: {{ .Values.deployment.rbac.serviceAccount }}
       serviceAccountName: {{ .Values.deployment.rbac.serviceAccount }}
       initContainers:
@@ -151,18 +151,18 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       restartPolicy: Always
-      # affinity:
-      # {{- include "bvd.affinity" (dict "deployment" "bvd-quexserv" "Values" .Values) | nindent 8 -}}
+      affinity:
+      {{- include "bvd.affinity" (dict "deployment" "bvd-quexserv" "Values" .Values) | nindent 8 -}}
 
-      # {{- with ( coalesce .Values.nodeSelector .Values.global.nodeSelector ) }}
-      # nodeSelector:
-      #  {{- toYaml . | nindent 8 }}
-      # {{- end }}
+      {{- with ( coalesce .Values.nodeSelector .Values.global.nodeSelector ) }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
 
-      # {{- with .Values.tolerations }}
-      # tolerations:
-      #   {{- toYaml . | nindent 8 }}
-      # {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
 
       volumes:
       - name: vault-token
