@@ -54,11 +54,11 @@ data:
   brokerServiceUrl: "pulsar+ssl://{{ template "pulsar.fullname" . }}-{{ .Values.proxy.component }}:{{ .Values.proxy.ports.pulsarssl }}/"
   useTls: "true"
   tlsAllowInsecureConnection: "false"
-  {{- if .Values.cert }}
-  tlsTrustCertsFilePath: "/pulsar/ssl/combined_ca.crt"
-  {{- else }}
-  tlsTrustCertsFilePath: "/var/run/secrets/boostport.com/issue_ca.crt"
-  {{- end }}
+ # {{- if .Values.cert }}
+ # tlsTrustCertsFilePath: "/pulsar/ssl/combined_ca.crt"
+ # {{- else }}
+ # tlsTrustCertsFilePath: "/var/run/secrets/boostport.com/issue_ca.crt"
+ # {{- end }}
   tlsEnableHostnameVerification: "false"
   {{- end }}
   {{- if not (and .Values.tls.enabled .Values.tls.proxy.enabled) }}
