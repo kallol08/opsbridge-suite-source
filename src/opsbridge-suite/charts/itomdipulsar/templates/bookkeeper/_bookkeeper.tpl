@@ -107,9 +107,9 @@ zkLedgersRootPath: "{{ .Values.metadataPrefix }}/ledgers"
 httpServerEnabled: "true"
 httpServerPort: "{{ .Values.bookkeeper.ports.http }}"
 # config the stats provider
-statsProviderClass: org.apache.bookkeeper.stats.prometheus.PrometheusMetricsProvider
+# statsProviderClass: org.apache.bookkeeper.stats.prometheus.PrometheusMetricsProvider
 # use hostname as the bookie id
-useHostNameAsBookieID: "true"
+# useHostNameAsBookieID: "true"
 {{- end }}
 
 {{/*

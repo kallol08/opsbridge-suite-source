@@ -34,7 +34,7 @@ data:
   autoRecoveryDaemonEnabled: "false"
   {{- end }}
   {{/* # Do not retain journal files as it increase the disk utilization */}}
-  journalMaxBackups: "0"
+  # journalMaxBackups: "0"
   journalDirectories: "data/bookkeeper/journal"
   PULSAR_PREFIX_journalDirectories: "data/bookkeeper/journal"
   ledgerDirectories: "data/bookkeeper/ledgers"
