@@ -151,8 +151,8 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       restartPolicy: Always
-      affinity:
-      {{- include "bvd.affinity" (dict "deployment" "bvd-quexserv" "Values" .Values) | nindent 8 -}}
+      # affinity:
+      # {{- include "bvd.affinity" (dict "deployment" "bvd-quexserv" "Values" .Values) | nindent 8 -}}
 
       {{- with ( coalesce .Values.nodeSelector .Values.global.nodeSelector ) }}
       nodeSelector:
