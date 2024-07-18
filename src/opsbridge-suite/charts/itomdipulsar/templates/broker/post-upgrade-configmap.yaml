@@ -64,13 +64,13 @@ data:
     ssl.endpoint.identification.algorithm=
 {{- end }}
 
-{{- if .Values.cert }}
-{{- if (index .Values.cert "client.crt") }}
-  tlsTrustCertsFilePath: "/pulsar/ssl/custom/client_ca.crt"
-  authParams: "tlsCertFile:/pulsar/ssl/custom/client.crt,tlsKeyFile:/pulsar/ssl/custom/client.key"
-{{- end }}
-{{- else }}
-  tlsTrustCertsFilePath: {{or .Values.srcTlsTrustCertsFilePath "/var/run/secrets/boostport.com/issue_ca.crt"}}
-  authParams: "tlsCertFile:/var/run/secrets/boostport.com/server.crt,tlsKeyFile:/var/run/secrets/boostport.com/server.key"
-{{- end }}
-{{- end }}
+# {{- if .Values.cert }}
+# {{- if (index .Values.cert "client.crt") }}
+#  tlsTrustCertsFilePath: "/pulsar/ssl/custom/client_ca.crt"
+#  authParams: "tlsCertFile:/pulsar/ssl/custom/client.crt,tlsKeyFile:/pulsar/ssl/custom/client.key"
+# {{- end }}
+# {{- else }}
+#  tlsTrustCertsFilePath: {{or .Values.srcTlsTrustCertsFilePath "/var/run/secrets/boostport.com/issue_ca.crt"}}
+#  authParams: "tlsCertFile:/var/run/secrets/boostport.com/server.crt,tlsKeyFile:/var/run/secrets/boostport.com/server.key"
+# {{- end }}
+# {{- end }}
