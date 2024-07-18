@@ -35,11 +35,6 @@ data:
   brokerServiceUrl: "pulsar+ssl://{{ .currentComponentFull }}:{{ .Values.broker.ports.pulsarssl }}/"
   useTls: "true"
   tlsAllowInsecureConnection: "false"
-  # {{- if .Values.cert }}
-  # tlsTrustCertsFilePath: "/pulsar/ssl/combined_ca.crt"
-  # {{- else }}
-  # tlsTrustCertsFilePath: "/var/run/secrets/boostport.com/issue_ca.crt"
-  # {{- end }}
   tlsEnableHostnameVerification: "false"
   {{- else }}
   webServiceUrl: "http://{{ .currentComponentFull }}:{{ .Values.broker.ports.http }}/"

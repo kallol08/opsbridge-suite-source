@@ -126,10 +126,10 @@ spec:
           value: "tlsCertFile:/pulsar/ssl/custom/client.crt,tlsKeyFile:/pulsar/ssl/custom/client.key"
         {{- end }}
         {{- else }}
-        - name: tlsTrustCertsFilePath
-          value: {{or .Values.srcTlsTrustCertsFilePath "/var/run/secrets/boostport.com/issue_ca.crt"}}
-        - name: authParams
-          value: "tlsCertFile:/var/run/secrets/boostport.com/server.crt,tlsKeyFile:/var/run/secrets/boostport.com/server.key"
+        #- name: tlsTrustCertsFilePath
+        #  value: {{or .Values.srcTlsTrustCertsFilePath "/var/run/secrets/boostport.com/issue_ca.crt"}}
+        #- name: authParams
+        #  value: "tlsCertFile:/var/run/secrets/boostport.com/server.crt,tlsKeyFile:/var/run/secrets/boostport.com/server.key"
         {{- end }}
         volumeMounts:
         - name: tmp
