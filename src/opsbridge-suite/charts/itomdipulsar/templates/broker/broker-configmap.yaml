@@ -69,7 +69,7 @@ data:
   {{/* # Function Worker Settings */}}
   {{/* # function worker configuration */}}
   {{- if .Values.components.functions }}
-  functionsWorkerEnabled: "true"
+  # functionsWorkerEnabled: "true"
   {{- if .Values.functions.enableCustomizerRuntime }}
   PULSAR_EXTRA_CLASSPATH: "{{ template "pulsar.home" .}}/{{ .Values.functions.pulsarExtraClasspath }}"
   {{- end }}
@@ -84,8 +84,8 @@ data:
   {{- end }}
   {{- if and .Values.tls.enabled .Values.tls.broker.enabled }}
   tlsEnabled: "true"
-  brokerServicePortTls: "{{ .Values.broker.ports.pulsarssl }}"
-  webServicePortTls: "{{ .Values.broker.ports.https }}"
+  # brokerServicePortTls: "{{ .Values.broker.ports.pulsarssl }}"
+  # webServicePortTls: "{{ .Values.broker.ports.https }}"
   {{/* # TLS Settings */}}
   tlsCertificateFilePath: "/var/run/secrets/boostport.com/server.crt"
   tlsKeyFilePath: "/var/run/secrets/boostport.com/server.key"
@@ -155,14 +155,14 @@ data:
   {{- if .Values.auth.authorization.enabled }}
   authorizationEnabled: "true"
   superUserRoles: {{ .Values.auth.superUsers.broker }},{{ .Values.auth.superUsers.proxy }},{{ .Values.auth.superUsers.client }},{{ .Values.auth.superUsers.pulsar_manager }}
-  proxyRoles: {{ .Values.auth.superUsers.proxy }}
+  # proxyRoles: {{ .Values.auth.superUsers.proxy }}
   authenticateOriginalAuthData: "false"
   tlsTrustCertsFilePath: "/pulsar/ssl/combined_ca.crt"
   {{- end }}
   {{- if eq (.Values.bookkeeper.replicaCount | int) 1 }}
-  managedLedgerDefaultEnsembleSize: "1"
-  managedLedgerDefaultWriteQuorum: "1"
-  managedLedgerDefaultAckQuorum: "1"
+  # managedLedgerDefaultEnsembleSize: "1"
+  # managedLedgerDefaultWriteQuorum: "1"
+  # managedLedgerDefaultAckQuorum: "1"
   {{- end }}
   forceDeleteTenantAllowed: "true"
   forceDeleteNamespaceAllowed: "true"
