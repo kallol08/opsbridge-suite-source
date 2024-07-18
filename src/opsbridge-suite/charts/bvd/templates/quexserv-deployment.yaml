@@ -154,15 +154,15 @@ spec:
       # affinity:
       # {{- include "bvd.affinity" (dict "deployment" "bvd-quexserv" "Values" .Values) | nindent 8 -}}
 
-      #{{- with ( coalesce .Values.nodeSelector .Values.global.nodeSelector ) }}
-      nodeSelector:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
+      # {{- with ( coalesce .Values.nodeSelector .Values.global.nodeSelector ) }}
+      # nodeSelector:
+      #  {{- toYaml . | nindent 8 }}
+      # {{- end }}
 
-      {{- with .Values.tolerations }}
-      tolerations:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
+      # {{- with .Values.tolerations }}
+      # tolerations:
+      #   {{- toYaml . | nindent 8 }}
+      # {{- end }}
 
       volumes:
       - name: vault-token
