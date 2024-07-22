@@ -36,7 +36,6 @@ spec:
         {{- end }}
         {{- include "bvd.monitorConfigmap" (dict "Values" .Values) | nindent 8 }}
     spec:
-      #affinity: {{- include "bvd.affinity" (dict "deployment" "bvd-quexserv" "Values" .Values) | nindent 10 }}
       serviceAccount: {{ .Values.deployment.rbac.serviceAccount }}
       serviceAccountName: {{ .Values.deployment.rbac.serviceAccount }}
       initContainers:
